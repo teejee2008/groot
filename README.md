@@ -52,9 +52,18 @@ Display sharing is enabled by default. You can run GUI applications that are ins
 
 ## Installation
 
-Binary installers are available for all Linux distributions.
+Binary installers are available on the [Releases](https://github.com/teejee2008/groot/releases) page.  
+Run following commands in a terminal window:
 
+```sh
+# 64-bit
+sudo chmod a+x ./groot*amd64.run
+sudo ./groot*amd64.run
 
+# 32-bit
+sudo chmod a+x ./groot*i386.run
+sudo ./groot*i386.run
+```
 
 ## Donate
 
