@@ -53,16 +53,16 @@ Display sharing is enabled by default. You can run GUI applications that are ins
 ## Installation
 
 Binary installers are available on the [Releases](https://github.com/teejee2008/groot/releases) page.  
-Run following commands in a terminal window:
+
+You can download and install the latest release of groot on any Linux distribution, using the following one-line commands:
 
 ```sh
 # 64-bit
-sudo chmod a+x ./groot*amd64.run
-sudo ./groot*amd64.run
-
+cd /tmp && curl -s -L https://github.com/teejee2008/groot/releases/latest | egrep -o 'teejee2008/groot/releases/download/.*/groot-v[0-9.]*-amd64.run' | wget --base=http://github.com/ -i - -O groot-latest-amd64.run && sudo chmod a+x ./groot-latest-amd64.run && sudo ./groot-latest-amd64.run
+```
+```sh
 # 32-bit
-sudo chmod a+x ./groot*i386.run
-sudo ./groot*i386.run
+cd /tmp && curl -s -L https://github.com/teejee2008/groot/releases/latest | egrep -o 'teejee2008/groot/releases/download/.*/groot-v[0-9.]*-i386.run' | wget --base=http://github.com/ -i - -O groot-latest-i386.run && sudo chmod a+x ./groot-latest-i386.run && sudo ./groot-latest-i386.run
 ```
 
 ## Donate
