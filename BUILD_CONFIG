@@ -1,0 +1,6 @@
+
+app_fullname="GRoot"
+app_name="groot"
+pkg_name="groot"
+pkg_version=$(dpkg-parsechangelog --show-field Version)
+git_origin=""
