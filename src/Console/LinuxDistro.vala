@@ -314,9 +314,9 @@ public class LinuxDistro : GLib.Object{
 		
 		log_msg("Dist Type: %s".printf(dist_type_name));
 		log_msg("Package Manager: %s".printf(package_manager));
-		log_msg("Architecture-Pkgs: %s".printf(package_arch));
-		log_msg("Architecture-Kern: %s".printf(kernel_arch));
-		log_msg("Architecture-Type: %d-bit".printf(machine_arch));
+		log_msg("Arch-Pkgs: %s".printf(package_arch));
+		log_msg("Arch-Kern: %s".printf(kernel_arch));
+		log_msg("Arch-Type: %d-bit".printf(machine_arch));
 		
 		//log_msg(string.nfill(70,'-'));
 	}

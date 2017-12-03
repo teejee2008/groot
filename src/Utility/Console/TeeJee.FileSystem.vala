@@ -471,7 +471,7 @@ namespace TeeJee.FileSystem{
 
 	// directory helpers ----------------------
 	
-	public bool dir_exists (string dir_path){
+	public bool dir_exists(string dir_path){
 
 		return ( FileUtils.test(dir_path, GLib.FileTest.EXISTS) && FileUtils.test(dir_path, GLib.FileTest.IS_DIR));
 		
@@ -497,7 +497,7 @@ namespace TeeJee.FileSystem{
 		return false;*/
 	}
 	
-	public bool dir_create (string dir_path, bool show_message = false){
+	public bool dir_create(string dir_path, bool show_message = false){
 
 		/* Creates a directory along with parents */
 
@@ -518,7 +518,7 @@ namespace TeeJee.FileSystem{
 		}
 	}
 
-	public bool dir_delete (string dir_path, bool show_message = false){
+	public bool dir_delete(string dir_path, bool show_message = false){
 		
 		/* Recursively deletes directory along with contents */
 		
