@@ -43,5 +43,10 @@ public class FsTabEntry : GLib.Object {
 	public void print_line(){
 		log_msg("%-45s %-40s %-10s %-45s %2s %2s".printf(device,mount_point,fs_type,options,dump,pass));
 	}
+
+	public Device? get_device(Gee.ArrayList<Device> devices){
+
+		return Device.find_device_in_list(devices, device);
+	}
 }
 
