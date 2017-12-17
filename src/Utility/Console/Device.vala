@@ -40,13 +40,12 @@ public class Device : GLib.Object{
 	public static double MiB = 1024 * KiB;
 	public static double GiB = 1024 * MiB;
 
-	public string device = ""; 
-	public string name = "";   
-	public string kname = "";  
-	public string pkname = ""; 
-	public string pkname_toplevel = ""; 
+	public string device = "";
+	public string name = "";
+	public string kname = "";
+	public string pkname = "";
+	public string pkname_toplevel = "";
 	public string mapped_name = "";
-	   
 	public string uuid = "";
 	public string label = "";
 	public string partuuid = "";
@@ -91,31 +90,13 @@ public class Device : GLib.Object{
 
 	private static Gee.ArrayList<Device> device_list;
 
-	private static DeviceMonitor? monitor;
-
 	// static -----------------------------
 	
 	public static void init(){
 
 		get_block_devices();
-		
-		get_monitor();
 	}
 	
-	public static DeviceMonitor get_monitor(){
-		
-		if (monitor != null){ return monitor; }
-
-		var monitor = DeviceMonitor.get_monitor();
-
-		monitor.changed.connect(()=>{
-			//get_block_devices_using_lsblk();
-			get_block_devices();
-		});
-
-		return monitor;
-	}
-
 	public static void test_lsblk_version(){
 
 		if ((lsblk_version != null) && (lsblk_version.length > 0)){
@@ -374,138 +355,6 @@ public class Device : GLib.Object{
 		}
 	}
 
-	public bool unlock(string mapped_name, string passphrase, bool show_on_success = false){
-
-		/* Unlocks a LUKS device using provided passphrase.
-		 * Prompts the user for passphrase if empty.
-		 * Displays a GTK prompt if parent_window is not null
-		 * Otherwise prompts user on terminal with a timeout of 20 secsonds
-		 * */
-
-		log_debug("Device: unlock(): %s".printf(device));
-
-		Device unlocked_device = null;
-		string std_out = "", std_err = "";
-		bool is_error = false;
-		string message = "";
-		string details = "";
-
-		// check if not encrypted
-		if (!is_encrypted_partition){
-			log_debug("not encrypted!");
-			return true;
-		}
-
-		// check if already unlocked
-		query_changes();
-		if (has_children){
-			log_debug("has children!");
-			return true;
-		}
-
-		string luks_pass = passphrase;
-		string luks_name = mapped_name;
-
-		if ((luks_name == null) || (luks_name.length == 0)){
-			luks_name = "%s_crypt".printf(kname);
-		}
-
-		// console mode
-
-		if ((luks_pass == null) || (luks_pass.length == 0)){
-
-			// prompt user on terminal and unlock, else timeout after 20 secs
-
-			var counter = new TimeoutCounter();
-			counter.kill_process_on_timeout("cryptsetup", 20, true);
-			string cmd = "cryptsetup luksOpen '%s' '%s'".printf(device, luks_name);
-
-			log_debug(cmd);
-			Posix.system(cmd);
-			counter.stop();
-			log_msg("");
-
-			// no need to show messages
-		}
-		else{
-
-			// use password to unlock
-
-			var cmd = "echo -n -e '%s' | cryptsetup luksOpen --key-file - '%s' '%s'\n".printf(
-				luks_pass, device, luks_name);
-
-			log_debug(cmd.replace(luks_pass, "**PASSWORD**"));
-
-			int status = exec_script_sync(cmd, out std_out, out std_err, false, true);
-
-			switch (status){
-			case 512: // invalid passphrase
-				message = _("Wrong password");
-				details = _("Failed to unlock device");
-				show_message(message, details, true, show_on_success);
-				return false;
-			}
-		}
-		
-		// check if unlocked
-		query_changes();
-		if (has_children){
-			unlocked_device = children[0];
-		}
-
-		if (unlocked_device == null){
-			message = _("Failed to unlock device");
-			details = "%s: %s\n\n%s".printf(_("Device"), device, std_err);
-			is_error = true;
-		}
-		else{
-			message = _("Unlocked successfully");
-			details = "%s: %s, %s: /dev/mapper/%s".printf(_("Device"), device, _("Unlocked"), unlocked_device.mapped_name);
-			is_error = false;
-		}
-
-		show_message(message, details, is_error, show_on_success);
-		return (unlocked_device != null);
-	}
-
-	public bool lock_device(bool show_on_success = false){
-
-		log_debug("Device: lock_device(): %s".printf(device));
-
-		// check if not on encrypted device
-		if (!is_encrypted_partition){
-			log_debug("Device not encrypted!");
-			return true;
-		}
-
-		if (!has_children){
-			log_debug("Device does not have unlocked children!");
-			return true;
-		}
-
-		var cmd = "cryptsetup luksClose %s".printf(children[0].mapped_name);
-		log_debug(cmd);
-		string std_out, std_err;
-		exec_script_sync(cmd, out std_out, out std_err, false, true); // prompt user if not admin
-
-		query_changes();
-
-		if (has_children){
-			string message = _("Failed to lock device");
-			string details = "%s: %s\n\n%s".printf(_("Device"), device, std_err);
-			bool is_error = true;
-			show_message(message, details, is_error, show_on_success);
-			return !is_error;
-		}
-		else{
-			string message = _("Locked successfully");
-			string details = "%s: %s".printf(_("Locked"), parent.device);
-			bool is_error = false;
-			show_message(message, details, is_error, show_on_success);
-			return !is_error;
-		}
-	}
-
 	public void flush_buffers(){
 		if (!is_mounted) { return; }
 		if (type != "disk") { return; }
@@ -676,7 +525,6 @@ public class Device : GLib.Object{
 			}
 		}
 	}
-
 
 	public static Gee.ArrayList<Device> get_block_devices_using_lsblk(string dev_name = ""){
 
@@ -894,34 +742,6 @@ public class Device : GLib.Object{
 
 		//log_debug("Device: get_block_devices_using_lsblk(): %d".printf(list.size));
 
-		return list;
-	}
-
-	/* Not useful */
-	public static Gee.ArrayList<Device> get_block_devices_using_glib(){
-
-		log_debug("Device: get_block_devices_using_glib()");
-		
-		var list = new Gee.ArrayList<Device>();
-
-		var vmon = VolumeMonitor.get();
-		var volumes = vmon.get_volumes(); 
-		foreach (var volume in volumes) {
-			Device dev = new Device();
-			dev.uuid = volume.get_uuid();
-			list.add(dev);
-			/*
-			stdout.printf (" - name: %s\n", volume.get_name());
-			stdout.printf (" - uuid: %s\n", volume.get_uuid());
-			stdout.printf (" - UUID: %s\n", volume.get_identifier(GLib.VolumeIdentifier.UUID));
-			stdout.printf (" - LABEL: %s\n", volume.get_identifier(GLib.VolumeIdentifier.LABEL));
-			stdout.printf (" - UNIX_DEVICE: %s\n", volume.get_identifier(GLib.VolumeIdentifier.UNIX_DEVICE));
-			stdout.printf (" - NFS_MOUNT: %s\n", volume.get_identifier(GLib.VolumeIdentifier.NFS_MOUNT));
-			stdout.printf (" - HAL_UDI: %s\n", volume.get_identifier(GLib.VolumeIdentifier.HAL_UDI));
-			stdout.printf (" - CLASS: %s\n", volume.get_identifier(GLib.VolumeIdentifier.CLASS));
-			* */
-		}
-		
 		return list;
 	}
 
@@ -1191,105 +1011,6 @@ public class Device : GLib.Object{
 		return dev;
 	}
 
-	// deprecated: use get_block_devices_using_lsblk() instead
-	public static Gee.ArrayList<Device> get_block_devices_using_blkid(string dev_name = ""){
-
-		/* Returns list of mounted partitions using 'blkid' command
-		   Populates device, type, uuid, label */
-
-		var list = new Gee.ArrayList<Device>();
-
-		string std_out;
-		string std_err;
-		string cmd;
-		int ret_val;
-		Regex rex;
-		MatchInfo match;
-
-		cmd = "/sbin/blkid" + ((dev_name.length > 0) ? " " + dev_name: "");
-
-		if (LOG_DEBUG){
-			log_debug(cmd);
-		}
-
-		ret_val = exec_script_sync(cmd, out std_out, out std_err);
-		if (ret_val != 0){
-			var msg = "blkid: " + _("Failed to get partition list");
-			msg += (dev_name.length > 0) ? ": " + dev_name : "";
-			log_error(msg);
-			return list; //return empty list
-		}
-
-		/*
-		sample output
-		-----------------
-		/dev/sda1: LABEL="System Reserved" UUID="F476B08076B04560" TYPE="ntfs"
-		/dev/sda2: LABEL="windows" UUID="BE00B6DB00B69A3B" TYPE="ntfs"
-		/dev/sda3: UUID="03f3f35d-71fa-4dff-b740-9cca19e7555f" TYPE="ext4"
-		*/
-
-		//parse output and build filesystem map -------------
-
-		foreach(string line in std_out.split("\n")){
-			if (line.strip().length == 0) { continue; }
-
-			Device pi = new Device();
-
-			pi.device = line.split(":")[0].strip();
-
-			if (pi.device.length == 0) { continue; }
-
-			//exclude non-standard devices --------------------
-
-			if (!pi.device.has_prefix("/dev/")){
-				continue;
-			}
-
-			if (pi.device.has_prefix("/dev/sd") || pi.device.has_prefix("/dev/hd") || pi.device.has_prefix("/dev/mapper/") || pi.device.has_prefix("/dev/dm")) {
-				//ok
-			}
-			else if (pi.device.has_prefix("/dev/disk/by-uuid/")){
-				//ok, get uuid
-				pi.uuid = pi.device.replace("/dev/disk/by-uuid/","");
-			}
-			else{
-				continue; //skip
-			}
-
-			//parse & populate fields ------------------
-
-			try{
-				rex = new Regex("""LABEL=\"([^\"]*)\"""");
-				if (rex.match (line, 0, out match)){
-					pi.label = match.fetch(1); // do not strip - labels can have leading or trailing spaces
-				}
-
-				rex = new Regex("""UUID=\"([^\"]*)\"""");
-				if (rex.match (line, 0, out match)){
-					pi.uuid = match.fetch(1).strip();
-				}
-
-				rex = new Regex("""TYPE=\"([^\"]*)\"""");
-				if (rex.match (line, 0, out match)){
-					pi.fstype = match.fetch(1).strip();
-				}
-			}
-			catch(Error e){
-				log_error (e.message);
-			}
-
-			//add to map -------------------------
-
-			if (pi.uuid.length > 0){
-				list.add(pi);
-			}
-		}
-
-		log_debug("Device: get_block_devices_using_blkid(): %d".printf(list.size));
-
-		return list;
-	}
-
 	// static helpers ----------------------------------
 
 	public static void print_device_list_short(Gee.ArrayList<Device> list){
@@ -1385,7 +1106,6 @@ public class Device : GLib.Object{
 		return null;
 	}
 
-
 	public static Device? get_device_by_uuid(string uuid){
 
 		foreach(var dev in device_list){
@@ -1422,7 +1142,6 @@ public class Device : GLib.Object{
 
 		return null;
 	}
-
 
 	public static string get_uuid_by_name(string device){
 
@@ -1706,147 +1425,10 @@ public class Device : GLib.Object{
 		return (status == 0);
 	}
 
-	public static Device? luks_unlock(Device dev, string mapped_name, string passphrase, bool show_on_success = false){
-
-		/* Unlocks a LUKS device using provided passphrase.
-		 * Prompts the user for passphrase if empty.
-		 * Displays a GTK prompt if parent_window is not null
-		 * Otherwise prompts user on terminal with a timeout of 20 secsonds
-		 * */
-
-		Device unlocked_device = null;
-		string std_out = "", std_err = "";
-		bool is_error = false;
-		string message = "";
-		string details = "";
-
-		// check if not encrypted
-		if (!dev.is_encrypted_partition){
-			return dev;
-		}
-
-		// check if already unlocked
-		dev.query_changes();
-		if (dev.has_children){
-			return dev.children[0];
-		}
-
-		string luks_pass = passphrase;
-		string luks_name = mapped_name;
-
-		if ((luks_name == null) || (luks_name.length == 0)){
-			luks_name = "%s_crypt".printf(dev.kname);
-		}
-
-		// console mode
-
-		if ((luks_pass == null) || (luks_pass.length == 0)){
-
-			// prompt user on terminal and unlock, else timeout after 20 secs
-
-			var counter = new TimeoutCounter();
-			counter.kill_process_on_timeout("cryptsetup", 20, true);
-			string cmd = "cryptsetup luksOpen '%s' '%s'".printf(dev.device, luks_name);
-
-			log_debug(cmd);
-			Posix.system(cmd);
-			counter.stop();
-			log_msg("");
-
-			// no need to show messages
-		}
-		else{
-
-			// use password to unlock
-
-			var cmd = "echo -n -e '%s' | cryptsetup luksOpen --key-file - '%s' '%s'\n".printf(
-				luks_pass, dev.device, luks_name);
-
-			log_debug(cmd.replace(luks_pass, "**PASSWORD**"));
-
-			int status = exec_script_sync(cmd, out std_out, out std_err, false, true);
-
-			switch (status){
-			case 512: // invalid passphrase
-				message = _("Wrong password");
-				details = _("Failed to unlock device");
-				show_message(message, details, true, show_on_success);
-				return null;
-			}
-		}
-
-		// check if unlocked
-		dev.query_changes();
-		if (dev.has_children){
-			unlocked_device = dev.children[0];
-		}
-
-
-		if (unlocked_device == null){
-			message = _("Failed to unlock device");
-			details = "%s: %s\n\n%s".printf(_("Device"), dev.device, std_err);
-			is_error = true;
-		}
-		else{
-			message = _("Unlocked successfully");
-			details = "%s: %s, %s: /dev/mapper/%s".printf(_("Device"), dev.device, _("Unlocked"), unlocked_device.mapped_name);
-			is_error = false;
-		}
-
-		show_message(message, details, is_error, show_on_success);
-		return unlocked_device;
-	}
-
-	public static Device luks_lock(Device dev, bool show_on_success){
-
-		// check if not on encrypted device
-		if (!dev.is_on_encrypted_partition){
-			log_debug("Device is not encrypted: %s".printf(dev.device));
-			return dev;
-		}
-
-		var parent_device = dev.parent;
-
-		var cmd = "cryptsetup luksClose %s".printf(dev.kname);
-		log_debug(cmd);
-		string std_out, std_err;
-		exec_script_sync(cmd, out std_out, out std_err, false, true); // prompt user if not admin
-
-		parent_device.query_changes();
-
-		if (parent_device.has_children){
-			string message = _("Failed to lock device");
-			string details = "%s: %s\n\n%s".printf(_("Device"), dev.device, std_err);
-			bool is_error = true;
-			show_message(message, details, is_error, show_on_success);
-		}
-		else{
-			string message = _("Locked successfully");
-			string details = "%s: %s".printf(_("Locked"), parent_device.device);
-			bool is_error = false;
-			show_message(message, details, is_error, show_on_success);
-		}
-
-		return parent_device;
-
-		/*log_debug(cmd);
-
-		if (bash_admin_shell != null){
-			int status = bash_admin_shell.execute(cmd);
-			return (status == 0);
-		}
-		else{
-			int status = exec_script_sync(cmd,null,null,false,true);
-			return (status == 0);
-		}*/
-	}
-
-	public static bool mount(
-		string dev_name_or_uuid, string mount_point, string mount_options = "", bool silent = false){
+	public static bool mount(string dev_name_or_uuid, string mount_point, string mount_options = "", bool silent = false){
 
 		/*
 		 * Mounts specified device at specified mount point.
-		 *
 		 * */
 
 		string cmd = "";
@@ -1894,7 +1476,7 @@ public class Device : GLib.Object{
 
 		dir_create(mount_point);
 
-		// unmount if any other device is mounted
+		// unmount if any other device is mounted ---------------
 
 		unmount_path(mount_point);
 
@@ -2460,205 +2042,6 @@ public class Device : GLib.Object{
 		log_msg("");
 	}
 }
-
-public class DeviceMonitor : GLib.Object{
-
-	private static DeviceMonitor? device_monitor;
-	private static GLib.VolumeMonitor? monitor;
-	private static uint tmr_init = 0;
-	
-	public signal void changed();
-
-	public signal void drive_changed (Drive drive);
-	public signal void drive_connected (Drive drive);
-	public signal void drive_disconnected (Drive drive);
-	//public signal void drive_eject_button (Drive drive)
-	//public signal void drive_stop_button (Drive drive)
-	public signal void mount_added (Mount mount);
-	public signal void mount_changed (Mount mount);
-	//public signal void mount_pre_unmount (Mount mount)
-	public signal void mount_removed (Mount mount);
-	public signal void volume_added (Volume volume);
-	public signal void volume_changed (Volume volume);
-	public signal void volume_removed (Volume volume);
-	
-	private DeviceMonitor(){
-
-	}
-	
-	public static DeviceMonitor get_monitor(){
-
-		if (device_monitor != null){ return device_monitor; }
-		
-		device_monitor = new DeviceMonitor();
-		monitor = VolumeMonitor.get();
-
-		// drive changes -------------------------------
-		
-		monitor.drive_connected.connect((drive) => {
-			print_drive (drive, "Drive connected");
-			device_monitor.drive_connected(drive);
-			start_timer();
-		});
-
-		monitor.drive_changed.connect((drive) => {
-			print_drive (drive, "Drive changed");
-			device_monitor.drive_changed(drive);
-			start_timer();
-		});
-
-		monitor.drive_disconnected.connect((drive) => {
-			print_drive (drive, "Drive disconnected");
-			device_monitor.drive_disconnected(drive);
-			start_timer();
-		});
-		
-		// mount changes -----------------------------------
-		
-		monitor.mount_added.connect((mount) => {
-			print_mount (mount, "Mount added");
-			device_monitor.mount_added (mount);
-			start_timer();
-		});
-
-		monitor.mount_changed.connect((mount) => {
-			print_mount (mount, "Mount changed");
-			device_monitor.mount_changed (mount);
-			start_timer();
-		});
-
-		monitor.mount_removed.connect((mount) => {
-			print_mount (mount, "Mount removed");
-			device_monitor.mount_removed (mount);
-			start_timer();
-		});
-
-		// mountable volume changes
-
-		monitor.volume_added.connect((volume) => {
-			print_volume (volume, "Volume added");
-			device_monitor.volume_added (volume);
-			start_timer();
-		});
-
-		monitor.volume_changed.connect((volume) => {
-			print_volume (volume, "Volume changed");
-			device_monitor.volume_changed (volume);
-			start_timer();
-		});
-
-		monitor.volume_removed.connect((volume) => {
-			print_volume (volume, "Volume removed");
-			device_monitor.volume_removed (volume);
-			start_timer();
-		});
-		
-		/*monitor.drive_connected.connect ((drive) => {
-			print_drive (drive, "Drive connected");
-
-			// Reject all newly connected drives:
-			drive.eject_with_operation.begin (MountUnmountFlags.FORCE, null, null, (obj, res) => {
-				try {
-					bool status = drive.eject_with_operation.end (res);
-					stdout.printf ("eject: %s: %s\n", drive.get_name (), status.to_string ());
-				} catch (Error e) {
-					stdout.printf ("Error: %s\n", e.message);
-				}
-			});
-		});*/
-	
-		
-		return device_monitor;
-	}
-
-	private static void start_timer(){
-		if (tmr_init > 0){
-			Source.remove(tmr_init);
-			tmr_init = 0;
-		}
-		tmr_init = Timeout.add(500, init_delayed);
-	}
-
-	private static bool init_delayed(){
-
-		if (tmr_init > 0){
-			Source.remove(tmr_init);
-			tmr_init = 0;
-		}
-
-		device_monitor.changed();
-		
-		return false;
-	}
-	
-	private static void print_drive (Drive drive, string title) {
-		
-		stdout.printf ("\n");
-		stdout.printf ("%s:\n", title);
-		stdout.printf ("  name: %s\n", drive.get_name ());
-		stdout.printf ("  can-eject: %s\n", drive.can_eject ().to_string ());
-		stdout.printf ("  can-poll-for-media: %s\n", drive.can_poll_for_media ().to_string ());
-		stdout.printf ("  can-start: %s\n", drive.can_start ().to_string ());
-		stdout.printf ("  can-start-degraded: %s\n", drive.can_start_degraded ().to_string ());
-		stdout.printf ("  can-stop: %s\n", drive.can_stop ().to_string ());
-		stdout.printf ("  has-volumes: %s\n", drive.has_volumes ().to_string ());
-		stdout.printf ("  has-media: %s\n", drive.has_media ().to_string ());
-		stdout.printf ("  is-media-check-automatic: %s\n", drive.is_media_check_automatic ().to_string ());
-		stdout.printf ("  is-media-removable: %s\n", drive.is_media_removable ().to_string ());
-		stdout.printf ("  start-stop-type: %s\n", drive.get_start_stop_type ().to_string ());
-
-		string[] kinds = drive.enumerate_identifiers ();
-		foreach (unowned string kind in kinds) {
-			stdout.printf ("    %s = %s\n", kind, drive.get_identifier (kind));
-		}
-		stdout.printf ("\n");
-	}
-
-	private static void print_mount (Mount mount, string title) {
-		
-		stdout.printf ("\n");
-		stdout.printf ("%s:\n", title);
-		stdout.printf ("  name: %s\n", mount.get_name ());
-		stdout.printf ("  uuid: %s\n", mount.get_uuid ());
-		stdout.printf ("  can-eject: %s\n", mount.can_eject ().to_string ());
-		stdout.printf ("  can-unmount: %s\n", mount.can_unmount ().to_string ());
-		stdout.printf ("  is-shadowed: %s\n", mount.is_shadowed ().to_string ());
-		stdout.printf ("  default-location: %s\n", mount.get_default_location ().get_path ());
-		stdout.printf ("  icon: %s\n", mount.get_icon ().to_string ());
-		stdout.printf ("  root: %s\n", mount.get_root ().get_path ());
-
-		try {
-			string[] types = mount.guess_content_type_sync (false);
-			stdout.printf ("  guess-content-type:\n");
-			foreach (unowned string type in types) {
-				stdout.printf ("    %s\n", type);
-			}
-		} catch (Error e) {
-			stdout.printf ("Error: %s\n", e.message);
-		}
-		stdout.printf ("\n");
-	}
-
-	private static void print_volume (Volume volume, string title) {
-		
-		stdout.printf ("\n");
-		stdout.printf ("%s:\n", title);
-		stdout.printf ("  name: %s\n", volume.get_name ());
-		stdout.printf ("  can-eject: %s\n", volume.can_eject ().to_string ());
-		stdout.printf ("  can-mount: %s\n", volume.can_mount ().to_string ());
-
-		string[] kinds = volume.enumerate_identifiers ();
-		foreach (unowned string kind in kinds) {
-			stdout.printf ("    %s = %s\n", kind, volume.get_identifier (kind));
-		}
-		stdout.printf ("\n");
-	}
-
-	public static List<Mount> get_mounts(){
-		return monitor.get_mounts();
-	}
-}
-
 
 
 

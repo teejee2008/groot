@@ -30,32 +30,12 @@ namespace TeeJee.System{
 	using TeeJee.FileSystem;
 	
 	// user ---------------------------------------------------
-	
-	public bool user_is_admin (){
 
-		/* Check if current application is running with admin priviledges */
-
-		try{
-			// create a process
-			string[] argv = { "sleep", "10" };
-			Pid procId;
-			Process.spawn_async(null, argv, null, SpawnFlags.SEARCH_PATH, null, out procId);
-
-			// try changing the priority
-			Posix.setpriority (Posix.PRIO_PROCESS, procId, -5);
-
-			// check if priority was changed successfully
-			if (Posix.getpriority (Posix.PRIO_PROCESS, procId) == -5)
-				return true;
-			else
-				return false;
-		}
-		catch (Error e) {
-			log_error (e.message);
-			return false;
-		}
+	public bool user_is_admin(){
+		
+		return (get_user_id_effective() == 0);
 	}
-
+	
 	public int get_user_id(){
 
 		// returns actual user id of current user (even for applications executed with sudo and pkexec)
@@ -209,50 +189,6 @@ namespace TeeJee.System{
 		}
 	}
 
-	public string get_desktop_name(){
-
-		/* Return the names of the current Desktop environment */
-
-		int pid = -1;
-
-		pid = get_pid_by_name("cinnamon");
-		if (pid > 0){
-			return "Cinnamon";
-		}
-
-		pid = get_pid_by_name("xfdesktop");
-		if (pid > 0){
-			return "Xfce";
-		}
-
-		pid = get_pid_by_name("lxsession");
-		if (pid > 0){
-			return "LXDE";
-		}
-
-		pid = get_pid_by_name("gnome-shell");
-		if (pid > 0){
-			return "Gnome";
-		}
-
-		pid = get_pid_by_name("wingpanel");
-		if (pid > 0){
-			return "Elementary";
-		}
-
-		pid = get_pid_by_name("unity-panel-service");
-		if (pid > 0){
-			return "Unity";
-		}
-
-		pid = get_pid_by_name("plasma-desktop");
-		if (pid > 0){
-			return "KDE";
-		}
-
-		return "Unknown";
-	}
-
 	public Gee.ArrayList<string> list_dir_names(string path){
 		var list = new Gee.ArrayList<string>();
 		
@@ -283,42 +219,66 @@ namespace TeeJee.System{
 	// internet helpers ----------------------
 	
 	public bool check_internet_connectivity(){
+		
 		bool connected = false;
-		connected = check_internet_connectivity_test1();
+		connected = check_internet_connectivity_test();
 
 		if (connected){
 			return connected;
 		}
 		
 		if (!connected){
-			connected = check_internet_connectivity_test2();
+			log_error(_("Internet connection is not active"));
 		}
 
 	    return connected;
 	}
 
+	public bool check_internet_connectivity_test(){
+		
+		string std_err, std_out;
+
+		string cmd = "url='http://google.com'\n";
+		
+		cmd += "httpCode=$(curl -o /dev/null --silent --head --write-out '%{http_code}\n' $url)";
+		
+		cmd += "test $httpCode -lt 400 && test $httpCode -gt 0\n";
+		
+		cmd += "exit $?";
+		
+		int status = exec_script_sync(cmd, out std_out, out std_err, false);
+
+	    return (status == 0);
+	}
+
 	public bool check_internet_connectivity_test1(){
-		int exit_code = -1;
-		string std_err;
-		string std_out;
+
+		// Deprecated: 'ping' may be disabled on enterprise systems
+
+		string std_err, std_out;
 
 		string cmd = "ping -q -w 1 -c 1 `ip r | grep default | cut -d ' ' -f 3`\n";
+		
 		cmd += "exit $?";
-		exit_code = exec_script_sync(cmd, out std_out, out std_err, false);
+		
+		int status = exec_script_sync(cmd, out std_out, out std_err, false);
 
-	    return (exit_code == 0);
+	    return (status == 0);
 	}
 
 	public bool check_internet_connectivity_test2(){
-		int exit_code = -1;
-		string std_err;
-		string std_out;
+
+		// Deprecated: 'ping' may be disabled on enterprise systems
+		
+		string std_err, std_out;
 
 		string cmd = "ping -q -w 1 -c 1 google.com\n";
+		
 		cmd += "exit $?";
-		exit_code = exec_script_sync(cmd, out std_out, out std_err, false);
+		
+		int status = exec_script_sync(cmd, out std_out, out std_err, false);
 
-	    return (exit_code == 0);
+	    return (status == 0);
 	}
 
 	public bool shutdown (){
@@ -345,118 +305,24 @@ namespace TeeJee.System{
 	// open -----------------------------
 
 	public bool xdg_open (string file, string user = ""){
+		
 		string path = get_cmd_path ("xdg-open");
+		
 		if ((path != null) && (path != "")){
+			
 			string cmd = "xdg-open '%s'".printf(escape_single_quote(file));
+			
 			if (user.length > 0){
 				cmd = "pkexec --user %s env DISPLAY=$DISPLAY XAUTHORITY=$XAUTHORITY ".printf(user) + cmd;
 			}
+			
 			log_debug(cmd);
+			
 			int status = exec_script_async(cmd);
+			
 			return (status == 0);
 		}
-		return false;
-	}
-
-	public bool exo_open_folder (string dir_path, bool xdg_open_try_first = true){
-
-		/* Tries to open the given directory in a file manager */
-
-		/*
-		xdg-open is a desktop-independent tool for configuring the default applications of a user.
-		Inside a desktop environment (e.g. GNOME, KDE, Xfce), xdg-open simply passes the arguments
-		to that desktop environment's file-opener application (gvfs-open, kde-open, exo-open, respectively).
-		We will first try using xdg-open and then check for specific file managers if it fails.
-		*/
-
-		string path;
-		int status;
 		
-		if (xdg_open_try_first){
-			//try using xdg-open
-			path = get_cmd_path ("xdg-open");
-			if ((path != null)&&(path != "")){
-				string cmd = "xdg-open '%s'".printf(escape_single_quote(dir_path));
-				status = exec_script_async (cmd);
-				return (status == 0);
-			}
-		}
-
-		foreach(string app_name in
-			new string[]{ "nemo", "nautilus", "thunar", "pantheon-files", "marlin"}){
-				
-			path = get_cmd_path (app_name);
-			if ((path != null)&&(path != "")){
-				string cmd = "%s '%s'".printf(app_name, escape_single_quote(dir_path));
-				status = exec_script_async (cmd);
-				return (status == 0);
-			}
-		}
-
-		if (xdg_open_try_first == false){
-			//try using xdg-open
-			path = get_cmd_path ("xdg-open");
-			if ((path != null)&&(path != "")){
-				string cmd = "xdg-open '%s'".printf(escape_single_quote(dir_path));
-				status = exec_script_async (cmd);
-				return (status == 0);
-			}
-		}
-
-		return false;
-	}
-
-	public bool exo_open_textfile (string txt_file){
-
-		/* Tries to open the given text file in a text editor */
-
-		string path;
-		int status;
-		string cmd;
-		
-		path = get_cmd_path ("exo-open");
-		if ((path != null)&&(path != "")){
-			cmd = "exo-open '%s'".printf(escape_single_quote(txt_file));
-			status = exec_script_async (cmd);
-			return (status == 0);
-		}
-
-		path = get_cmd_path ("gedit");
-		if ((path != null)&&(path != "")){
-			cmd = "gedit --new-document '%s'".printf(escape_single_quote(txt_file));
-			status = exec_script_async (cmd);
-			return (status == 0);
-		}
-
-		return false;
-	}
-
-	public bool exo_open_url (string url){
-
-		/* Tries to open the given text file in a text editor */
-
-		string path;
-		int status;
-		//string cmd;
-		
-		path = get_cmd_path ("exo-open");
-		if ((path != null)&&(path != "")){
-			status = exec_script_async ("exo-open \"" + url + "\"");
-			return (status == 0);
-		}
-
-		path = get_cmd_path ("firefox");
-		if ((path != null)&&(path != "")){
-			status = exec_script_async ("firefox \"" + url + "\"");
-			return (status == 0);
-		}
-
-		path = get_cmd_path ("chromium-browser");
-		if ((path != null)&&(path != "")){
-			status = exec_script_async ("chromium-browser \"" + url + "\"");
-			return (status == 0);
-		}
-
 		return false;
 	}
 

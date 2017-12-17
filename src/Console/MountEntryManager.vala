@@ -102,33 +102,6 @@ public class MountEntryManager : GLib.Object {
 		return true;
 	}
 
-	public void read_mount_entries_from_folder(string backup_path){
-
-		var list = dir_list_names(backup_path, true);
-		
-		foreach(string backup_file in list){
-
-			string file_name = file_basename(backup_file);
-
-			if (!file_name.has_suffix(".fstab")){ continue; }
-
-			parse_fstab_line(file_read(backup_file)); 
-		}
-
-		foreach(string backup_file in list){
-
-			string file_name = file_basename(backup_file);
-
-			if (!file_name.has_suffix(".crypttab")){ continue; }
-
-			parse_crypttab_line(file_read(backup_file));
-		}
-
-		update_device_uuids();
-
-		log_debug("read_mount_entries_from_folder(): %d, %d".printf(fstab.size, crypttab.size));
-	}
-
 	private void parse_fstab_line(string line){
 		
 		if ((line == null) || (line.length == 0)){ return; }

@@ -262,48 +262,6 @@ public class LinuxDistro : GLib.Object{
 
 	// public -----------------------------
 	
-	public static string get_running_desktop_name(){
-
-		int pid = -1;
-
-		pid = get_pid_by_name("cinnamon");
-		if (pid > 0){
-			return "Cinnamon";
-		}
-
-		pid = get_pid_by_name("xfdesktop");
-		if (pid > 0){
-			return "Xfce";
-		}
-
-		pid = get_pid_by_name("lxsession");
-		if (pid > 0){
-			return "LXDE";
-		}
-
-		pid = get_pid_by_name("gnome-shell");
-		if (pid > 0){
-			return "Gnome";
-		}
-
-		pid = get_pid_by_name("wingpanel");
-		if (pid > 0){
-			return "Elementary";
-		}
-
-		pid = get_pid_by_name("unity-panel-service");
-		if (pid > 0){
-			return "Unity";
-		}
-
-		pid = get_pid_by_name("plasma-desktop");
-		if (pid > 0){
-			return "KDE";
-		}
-
-		return "Unknown";
-	}
-
 	public void print_system_info(){
 		
 		//log_msg(string.nfill(70,'-'));

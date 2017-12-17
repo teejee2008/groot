@@ -44,12 +44,11 @@ extern void exit(int exit_code);
 public class GrootConsole : GLib.Object {
 
 	public string basepath = "";
-	public string base_mount_path = "";
+	public string basepath_bkup = "";
 
 	public bool share_internet = true;
 	public bool share_display = true;
-	public bool mount_devices = true;
-	
+
 	public LinuxDistro distro = null;
 
 	private string resolv_conf_bkup = "";
@@ -127,7 +126,7 @@ public class GrootConsole : GLib.Object {
 
 	public string help_message() {
 
-		string fmt = "  %-30s %s\n";
+		string fmt = "  %-15s %s\n";
 
 		//string fmt2 = "--- %s -----------------------------------\n\n"; //▰▰▰ ◈
 		
@@ -136,16 +135,15 @@ public class GrootConsole : GLib.Object {
 		msg += _("Usage") + ": groot [command] [basepath] [options]\n\n";
 
 		msg += "%s:\n".printf(_("Commands"));
-		msg += fmt.printf("--chroot", _("Change root (default command if none specified)"));
+		msg += fmt.printf("--chroot", _("Change root to basepath (default if no command specified)"));
+		msg += fmt.printf("--chroot-fstab", _("Read fstab file from basepath, mount devices under /tmp, and change root"));
 		msg += fmt.printf("--list-devices", _("List current devices"));
 		msg += fmt.printf("--sysinfo", _("Show current system information"));
+		msg += "\n";
 		
 		msg += "%s:\n".printf(_("Options"));
-		msg += fmt.printf("--list-devices", _("List current devices"));
-		msg += fmt.printf("--sysinfo", _("Show current system information"));
 		msg += fmt.printf("--no-display", _("Do not share display (default: sharing enabled)"));
 		msg += fmt.printf("--no-internet", _("Do not share internet connection (default: sharing enabled)"));
-		msg += fmt.printf("--no-mount-devices", _("Do not mount /home, /boot, /boot/efi (default: mounting enabled)"));
 		msg += fmt.printf("--debug", _("Show debug messages"));
 		msg += "\n";
 
@@ -165,7 +163,11 @@ public class GrootConsole : GLib.Object {
 			case "--chroot":
 				command = "chroot";
 				break;
-				
+
+			case "--chroot-fstab":
+				command = "chroot-fstab";
+				break;
+
 			case "--fix-boot":
 				command = "fix-boot";
 				break;
@@ -195,10 +197,6 @@ public class GrootConsole : GLib.Object {
 				share_internet = false;
 				break;
 
-			case "--no-mount-devices":
-				mount_devices = false;
-				break;
-				
 			case "--help":
 			case "--h":
 			case "-h":
@@ -239,6 +237,9 @@ public class GrootConsole : GLib.Object {
 		case "chroot":
 			return chroot();
 
+		case "chroot-fstab":
+			return chroot_fstab();
+
 		case "fix-boot":
 			return fix_boot();
 
@@ -256,13 +257,11 @@ public class GrootConsole : GLib.Object {
 	
 	private bool chroot(){
 
+		check_admin_access();
+		
 		bool status = true;
 
 		prepare_for_chroot();
-
-		if (mount_devices){
-			mount_system_devices();
-		}
 
 		start_session();
 
@@ -270,16 +269,116 @@ public class GrootConsole : GLib.Object {
 		
 		cleanup_after_chroot();
 
-		if (mount_devices){
-			unmount_system_devices();
-		}
+		return status;
+	}
+
+	private bool chroot_fstab(){
+
+		check_admin_access();
+		
+		bool status = true, ok;
+
+		ok = mount_system_devices();
+		if (!ok){ return false; }
+	
+		prepare_for_chroot();
+
+		start_session();
+
+		// session has ended --------------------------------------
+		
+		cleanup_after_chroot();
+
+		unmount_system_devices();
 
 		return status;
 	}
 
-	private bool prepare_for_chroot(){
+	private bool mount_system_devices(){
 
-		check_admin_access();
+		string fstab = path_combine(basepath, "/etc/fstab");
+		if (!file_exists(fstab)){
+			log_error("%s: %s".printf(_("File Not Found"), fstab));
+			log_error("%s".printf(_("Failed to mount system using fstab file")));
+			log_error("%s".printf(_("Use 'groot --chroot' to change root normally")));
+			return false;
+		}
+
+		var mgr = new MountEntryManager(false, basepath);
+		mgr.read_mount_entries();
+
+		var devices = Device.get_block_devices();
+
+		basepath_bkup = basepath;
+		basepath = "/tmp/%s".printf(timestamp_for_path());
+		dir_create(basepath);
+
+		foreach(var syspath in new string[] { "/", "/home", "/boot", "/boot/efi" }){
+
+			var entry = mgr.get_entry_by_path(syspath); // check if entry exists
+
+			if (entry != null){
+
+				var dev = entry.get_device(devices);
+
+				var mpath = path_combine(basepath, syspath);
+				
+				if (dev != null){
+
+					string cmd = "mount";
+					cmd += " -t %s".printf(entry.fs_type);
+					cmd += " -o %s".printf(entry.options);
+					cmd += " %s".printf(dev.device);
+					cmd += " '%s'".printf(escape_single_quote(mpath));
+					
+					log_msg("\n$ " + cmd);
+					Posix.system(cmd);
+				}
+			}
+		}
+
+		string cmd = "cd '%s'".printf(escape_single_quote(basepath));
+		log_msg("\n$ " + cmd);
+		Posix.system(cmd);
+
+		return true;
+	}
+
+	private bool unmount_system_devices(){
+
+		if (basepath.length == 0){ return false; }
+
+		var mgr = new MountEntryManager(false, basepath);
+		mgr.read_mount_entries();
+		
+		foreach(var syspath in new string[] { "/boot/efi", "/boot", "/home", "/" }){
+
+			var entry = mgr.get_entry_by_path(syspath); // check if entry exists
+
+			if (entry != null){
+				
+				var mpath = path_combine(basepath, syspath);
+				
+				string cmd = "umount";
+				cmd += " '%s'".printf(escape_single_quote(mpath));
+				
+				log_msg("\n$ " + cmd);
+				Posix.system(cmd);
+			}
+		}
+
+		file_delete(basepath); // delete if empty
+
+		basepath = basepath_bkup;
+
+		string cmd = "cd '%s'".printf(escape_single_quote(basepath));
+		log_msg("\n$ " + cmd);
+		Posix.system(cmd);
+		
+		return false;
+	}
+
+	private bool prepare_for_chroot(){
 
 		check_dirs();
 
@@ -291,7 +390,9 @@ public class GrootConsole : GLib.Object {
 		}
 
 		if (share_display){
-			Posix.system("xhost +local:");
+			string cmd = "xhost +local:";
+			log_msg("\n$ " + cmd);
+			Posix.system(cmd);
 		}
 
 		if (share_display){	
@@ -398,12 +499,15 @@ public class GrootConsole : GLib.Object {
 	private void start_session(){
 
 		show_session_message();
-		
-		Posix.system("SHELL=/bin/bash unshare --fork --pid chroot '%s'".printf(escape_single_quote(basepath)));
+
+		string cmd = "SHELL=/bin/bash unshare --fork --pid chroot '%s'".printf(escape_single_quote(basepath));
+		log_msg("\n$ " + cmd);
+		Posix.system(cmd); // --pid
 	}
 
 	private void show_session_message(){
 
+		log_msg("");
 		log_msg(string.nfill(70,'='));
 		log_msg("Entering chroot environment... ");
 		log_msg(string.nfill(70,'='));
@@ -425,7 +529,7 @@ public class GrootConsole : GLib.Object {
 		log_msg(string.nfill(70,'-'));
 		log_msg("Type 'exit' to quit the session cleanly");
 		log_msg(string.nfill(70,'-'));
-		log_msg("");
+		//log_msg("");
 	}
 
 	private void run_chroot_commands(string commands){
@@ -475,72 +579,4 @@ public class GrootConsole : GLib.Object {
 		return status;
 	}
 
-	private bool mount_system_devices(){
-
-		var mgr = new MountEntryManager(false, basepath);
-		mgr.read_mount_entries();
-
-		var devices = Device.get_block_devices();
-
-		base_mount_path = "/tmp/%s".printf(timestamp_for_path());
-		dir_create(base_mount_path);
-
-		foreach(var syspath in new string[] { "/", "/home", "/boot", "/boot/efi" }){
-
-			var entry = mgr.get_entry_by_path(syspath); // check if entry exists
-
-			if (entry != null){
-
-				var dev = entry.get_device(devices);
-
-				var mpath = path_combine(base_mount_path, syspath);
-				
-				if (dev != null){
-
-					string cmd = "mount";
-					cmd += " -t %s".printf(entry.fs_type);
-					cmd += " -o %s".printf(entry.options);
-					cmd += " %s".printf(dev.device);
-					cmd += " '%s'".printf(escape_single_quote(mpath));
-					
-					log_msg("\n$ " + cmd);
-					Posix.system(cmd);
-				}
-			}
-		}
-
-		string cmd = "cd '%s'".printf(escape_single_quote(base_mount_path));
-		log_msg("\n$ " + cmd);
-		Posix.system(cmd);
-
-		return true;
-	}
-
-	private bool unmount_system_devices(){
-
-		if (base_mount_path.length == 0){ return false; }
-
-		var mgr = new MountEntryManager(false, basepath);
-		mgr.read_mount_entries();
-		
-		foreach(var syspath in new string[] { "/boot/efi", "/boot", "/home", "/" }){
-
-			var entry = mgr.get_entry_by_path(syspath); // check if entry exists
-
-			if (entry != null){
-				
-				var mpath = path_combine(base_mount_path, syspath);
-				
-				string cmd = "umount";
-				cmd += " '%s'".printf(escape_single_quote(mpath));
-				
-				log_msg("\n$ " + cmd);
-				Posix.system(cmd);
-			}
-		}
-
-		file_delete(base_mount_path); // delete if empty
-		
-		return false;
-	}
 }
