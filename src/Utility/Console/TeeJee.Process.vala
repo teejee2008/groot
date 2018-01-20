@@ -35,13 +35,24 @@ namespace TeeJee.ProcessHelper{
 	// execute process ---------------------------------
 	
     public static void init_tmp(string subdir_name){
-		string std_out, std_err;
 
-		TEMP_DIR = Environment.get_tmp_dir() + "/" + subdir_name + "/" + random_string();
+		TEMP_DIR = Environment.get_tmp_dir() + "/" + subdir_name;
 		dir_create(TEMP_DIR);
+		chmod(TEMP_DIR, "a+rwx"); // allow application to create folders when running as nomal user
 
+		//log_msg("chmod: %s: %s".printf(TEMP_DIR, "a+rwx"));
+		
+		TEMP_DIR += "/" + random_string();
+		dir_create(TEMP_DIR);
+		chmod(TEMP_DIR, "a+rwx");
+
+		//log_msg("chmod: %s: %s".printf(TEMP_DIR, "a+rwx"));
+
+		string std_out, std_err;
 		exec_script_sync("echo 'ok'",out std_out,out std_err, true);
+		
 		if ((std_out == null)||(std_out.strip() != "ok")){
+			
 			TEMP_DIR = Environment.get_home_dir() + "/.temp/" + subdir_name + "/" + random_string();
 			exec_sync("rm -rf '%s'".printf(TEMP_DIR), null, null);
 			dir_create(TEMP_DIR);
