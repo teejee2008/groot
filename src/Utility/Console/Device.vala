@@ -225,6 +225,13 @@ public class Device : GLib.Object{
 		}
 	}
 
+	public bool is_unlocked {
+		get {
+			return (mapped_name.length > 0);
+		}
+	}
+
+
 	public bool is_on_encrypted_partition {
 		get {
 			return (type == "crypt");
@@ -341,6 +348,35 @@ public class Device : GLib.Object{
 		
 		if (is_mounted){
 			string message = _("Device mounted successfully");
+			string details = "%s: %s, %s: %s".printf(_("Device"), device, _("Path"), mount_points[0].mount_point);
+			bool is_error = false;
+			show_message(message, details, is_error, show_on_success);
+			return is_error;
+		}
+		else{
+			string message = _("Failed to mount device");
+			string details = "%s: %s\n\n%s".printf(_("Device"), device, std_err);
+			bool is_error = true;
+			show_message(message, details, is_error, show_on_success);
+			return is_error;
+		}
+	}
+
+	public bool unlock(string _mapped_name, bool show_on_success = false){
+
+		if (is_unlocked){ return true; }
+
+		string std_out, std_err;
+		int status;
+		var cmd = "cryptsetup luksOpen '%s' '%s'".printf(device, _mapped_name);
+		log_debug(cmd);
+
+		status = exec_sync(cmd, out std_out, out std_err);
+
+		query_changes();
+		
+		if (is_unlocked){
+			string message = _("Device unlocked successfully");
 			string details = "%s: %s, %s: %s".printf(_("Device"), device, _("Path"), mount_points[0].mount_point);
 			bool is_error = false;
 			show_message(message, details, is_error, show_on_success);
@@ -642,30 +678,28 @@ public class Device : GLib.Object{
 
 					if (pi.uuid.length > 0){
 						pi.device_by_uuid = "/dev/disk/by-uuid/%s".printf(pi.uuid);
+						pi.symlinks.add(pi.device_by_uuid);
 					}
 
 					if (pi.label.length > 0){
 						pi.device_by_label = "/dev/disk/by-label/%s".printf(pi.label);
+						pi.symlinks.add(pi.device_by_label);
 					}
 
 					if (pi.partuuid.length > 0){
 						pi.device_by_partuuid = "/dev/disk/by-partuuid/%s".printf(pi.partuuid);
+						pi.symlinks.add(pi.device_by_partuuid);
 					}
 
 					if (pi.partlabel.length > 0){
 						pi.device_by_partlabel = "/dev/disk/by-partlabel/%s".printf(pi.partlabel);
+						pi.symlinks.add(pi.device_by_partlabel);
 					}
 
-					//if ((pi.type == "crypt") && (pi.pkname.length > 0)){
-					//	pi.name = "%s (unlocked)".printf(pi.pkname);
-					//}
-
-					//if ((pi.uuid.length > 0) && (pi.pkname.length > 0)){
-						list.add(pi);
-					//}
+					list.add(pi);
 				}
 				else{
-					log_debug("no-match: %s".printf(line));
+					log_error("no-match: %s".printf(line));
 				}
 			}
 			catch(Error e){
@@ -678,45 +712,34 @@ public class Device : GLib.Object{
 			return (a.order - b.order);
 		});*/
 
-		// add aliases from /dev/disk/by-uuid/
-
-		foreach(var dev in list){
-			var dev_by_uuid = path_combine("/dev/disk/by-uuid/", dev.uuid);
-			if (file_exists(dev_by_uuid)){
-				dev.symlinks.add(dev_by_uuid);
-			}
-		}
-
 		// add aliases from /dev/mapper/
 
 		try
 		{
-			File f_dev_mapper = File.new_for_path ("/dev/mapper");
+			var f_mapper = File.new_for_path ("/dev/mapper");
 
-			FileEnumerator enumerator = f_dev_mapper.enumerate_children (
-				"%s,%s".printf(
-					FileAttribute.STANDARD_NAME, FileAttribute.STANDARD_SYMLINK_TARGET),
-				FileQueryInfoFlags.NOFOLLOW_SYMLINKS);
+			var enumerator = f_mapper.enumerate_children (
+				"%s,%s".printf(FileAttribute.STANDARD_NAME,
+					FileAttribute.STANDARD_SYMLINK_TARGET),
+					FileQueryInfoFlags.NOFOLLOW_SYMLINKS);
 
 			FileInfo info;
 			while ((info = enumerator.next_file ()) != null) {
 
 				if (info.get_name() == "control") { continue; }
 
-				File f_mapped = f_dev_mapper.resolve_relative_path(info.get_name());
+				string target_device = info.get_symlink_target().replace("..","/dev");
 
-				string mapped_file = f_mapped.get_path();
-				string mapped_device = info.get_symlink_target();
-				mapped_device = mapped_device.replace("..","/dev");
 				//log_debug("info.get_name(): %s".printf(info.get_name()));
 				//log_debug("info.get_symlink_target(): %s".printf(info.get_symlink_target()));
 				//log_debug("mapped_file: %s".printf(mapped_file));
 				//log_debug("mapped_device: %s".printf(mapped_device));
 
 				foreach(var dev in list){
-					if (dev.device == mapped_device){
-						dev.mapped_name = mapped_file.replace("/dev/mapper/","");
-						dev.symlinks.add(mapped_file);
+					if (dev.device == target_device){
+						dev.mapped_name = info.get_name();
+						dev.device_mapper = "/dev/mapper/" + info.get_name();
+						dev.symlinks.add(dev.device_mapper);
 						//log_debug("found link: %s -> %s".printf(mapped_file, dev.device));
 						break;
 					}
@@ -726,6 +749,8 @@ public class Device : GLib.Object{
 		catch (Error e) {
 			log_error (e.message);
 		}
+
+		// update relationships -----------------------------
 
 		foreach (var part in list){
 			find_child_devices(list, part);
@@ -1264,6 +1289,16 @@ public class Device : GLib.Object{
 		this.symlinks = dev2.symlinks;
 		this.parent = dev2.parent;
 		this.children = dev2.children;
+
+		// aliases
+		this.device_mapper = dev2.device_mapper;
+		this.device_by_uuid = dev2.device_by_uuid;
+		this.device_by_label = dev2.device_by_label;
+		this.device_by_partuuid = dev2.device_by_partuuid;
+		this.device_by_partlabel = dev2.device_by_partlabel;
+		
+		this.major = dev2.major;
+		this.minor = dev2.minor;
 	}
 
 	public Device? query_changes(){
