@@ -377,7 +377,9 @@ public class Device : GLib.Object{
 
 		var list = get_block_devices_using_lsblk();
 
-		device_list = list;
+		if (device_list == null){
+			device_list = list;
+		}
 
 		//update_device_ids(list);
 		

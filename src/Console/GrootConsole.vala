@@ -60,7 +60,7 @@ public class GrootConsole : GLib.Object {
 
 		LOG_TIMESTAMP = false;
 
-		LOG_DEBUG = true;
+		//LOG_DEBUG = true;
 		
 		init_tmp(AppShortName);
 
@@ -68,7 +68,7 @@ public class GrootConsole : GLib.Object {
 
 		Device.init();
 
-		Device.test_all();
+		//Device.test_all();
 
 		var console =  new GrootConsole();
 		bool is_success = console.parse_arguments(args);
