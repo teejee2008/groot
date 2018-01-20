@@ -435,7 +435,7 @@ public class GrootConsole : GLib.Object {
 	private void check_dirs(){
 	
 		if (verbose || LOG_DEBUG){
-			log_msg("\n%s: %s".printf(_("basepath"), basepath));
+			log_msg("\n%s=%s".printf(_("basepath"), basepath));
 		}
 
 		foreach(string name in new string[]{ "dev", "proc", "run", "sys" }){
@@ -456,31 +456,31 @@ public class GrootConsole : GLib.Object {
 		string cmd = "";
 
 		cmd = "mount proc   '%s/proc'    -t proc     -o nosuid,noexec,nodev".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "mount sys    '%s/sys'     -t sysfs    -o nosuid,noexec,nodev,ro".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "mount udev   '%s/dev'     -t devtmpfs -o mode=0755,nosuid".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "mount devpts '%s/dev/pts' -t devpts   -o mode=0620,gid=5,nosuid,noexec".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "mount shm    '%s/dev/shm' -t tmpfs    -o mode=1777,nosuid,nodev".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "mount run    '%s/run'     -t tmpfs    -o nosuid,nodev,mode=0755".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "mount tmp    '%s/tmp'     -t tmpfs    -o mode=1777,strictatime,nodev,nosuid".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 	}
 
@@ -489,23 +489,23 @@ public class GrootConsole : GLib.Object {
 		string cmd = "";
 		
 		cmd = "umount --lazy --force --recursive '%s/dev'".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "umount --lazy --force --recursive '%s/run'".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "umount --lazy --force --recursive '%s/sys'".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "umount --lazy --force --recursive '%s/proc'".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 
 		cmd = "umount --lazy --force --recursive '%s/tmp'".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd);
 	}
 
@@ -529,10 +529,10 @@ public class GrootConsole : GLib.Object {
 
 				if (verbose || LOG_DEBUG){
 					
-					string msg = "%s: '%s' > '%s'".printf(
-						_("Moved"),
-						escape_single_quote(conf_chroot.replace(basepath, "<basepath>")),
-						escape_single_quote(conf_chroot_bkup.replace(basepath, "<basepath>")));
+					string msg = "[%s] '%s' > '%s'".printf(
+						_("moved"),
+						escape_single_quote(conf_chroot.replace(basepath, "$basepath")),
+						escape_single_quote(conf_chroot_bkup.replace(basepath, "$basepath")));
 						
 					log_msg("\n" + msg);
 				}
@@ -542,10 +542,10 @@ public class GrootConsole : GLib.Object {
 
 			if (verbose || LOG_DEBUG){
 					
-				string msg = "%s: '%s' > '%s'".printf(
-					_("Copied"),
-					escape_single_quote(conf.replace(basepath, "<basepath>")),
-					escape_single_quote(conf_chroot.replace(basepath, "<basepath>")));
+				string msg = "[%s] '%s' > '%s'".printf(
+					_("copied"),
+					escape_single_quote(conf.replace(basepath, "$basepath")),
+					escape_single_quote(conf_chroot.replace(basepath, "$basepath")));
 					
 				log_msg("\n" + msg);
 			}
@@ -572,9 +572,9 @@ public class GrootConsole : GLib.Object {
 
 				if (verbose || LOG_DEBUG){
 					
-					string msg = "%s: '%s'".printf(
-						_("Removed"),
-						escape_single_quote(conf_chroot.replace(basepath, "<basepath>")));
+					string msg = "[%s] '%s'".printf(
+						_("removed"),
+						escape_single_quote(conf_chroot.replace(basepath, "$basepath")));
 						
 					log_msg("\n" + msg);
 				}
@@ -584,10 +584,10 @@ public class GrootConsole : GLib.Object {
 
 			if (verbose || LOG_DEBUG){
 					
-				string msg = "%s: '%s' > '%s'".printf(
-					_("Moved"),
-					escape_single_quote(conf_chroot_bkup.replace(basepath, "<basepath>")),
-					escape_single_quote(conf_chroot.replace(basepath, "<basepath>")));
+				string msg = "[%s] '%s' > '%s'".printf(
+					_("moved"),
+					escape_single_quote(conf_chroot_bkup.replace(basepath, "$basepath")),
+					escape_single_quote(conf_chroot.replace(basepath, "$basepath")));
 					
 				log_msg("\n" + msg);
 			}
@@ -599,7 +599,7 @@ public class GrootConsole : GLib.Object {
 		show_session_message();
 
 		string cmd = "SHELL=/bin/bash unshare --fork --pid chroot '%s'".printf(escape_single_quote(basepath));
-		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd); // --pid
 	}
 
@@ -607,7 +607,7 @@ public class GrootConsole : GLib.Object {
 
 		log_msg("");
 		log_msg(string.nfill(70,'='));
-		log_msg("Entering chroot environment... ");
+		log_msg(_("Entering chroot environment..."));
 		log_msg(string.nfill(70,'='));
 
 		if (share_internet){
