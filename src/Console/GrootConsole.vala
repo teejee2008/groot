@@ -635,11 +635,42 @@ public class GrootConsole : GLib.Object {
 			log_msg(string.nfill(70,'-'));
 		}
 
-		string ts = timestamp_for_path();
-
 		string conf = "/etc/resolv.conf";
 		string conf_chroot = path_combine(basepath, conf);
-		string conf_chroot_bkup = path_combine(basepath, conf + ".bkup-%s".printf(ts));
+		string conf_chroot_bkup = path_combine(basepath, conf + ".groot-bkup");
+
+		// fix for broken session ---------------------------------------
+
+		if (file_exists(conf_chroot_bkup)){
+
+			// restore the backup -------------------------
+			
+			if (file_exists(conf_chroot)){
+				
+				file_delete(conf_chroot);
+
+				if (verbose || LOG_DEBUG){
+					
+					string msg = "[%s] '%s'".printf(
+						_("removed"),
+						escape_single_quote(conf_chroot.replace(basepath, "$basepath")));
+						
+					log_msg("\n" + msg);
+				}
+			}
+
+			file_move(conf_chroot_bkup, conf_chroot, false);
+
+			if (verbose || LOG_DEBUG){
+					
+				string msg = "[%s] '%s' > '%s'".printf(
+					_("moved"),
+					escape_single_quote(conf_chroot_bkup.replace(basepath, "$basepath")),
+					escape_single_quote(conf_chroot.replace(basepath, "$basepath")));
+					
+				log_msg("\n" + msg);
+			}
+		}
 
 		// copy resolv.conf -----------------------------------------
 
