@@ -60,9 +60,15 @@ public class GrootConsole : GLib.Object {
 
 		LOG_TIMESTAMP = false;
 
+		LOG_DEBUG = true;
+		
 		init_tmp(AppShortName);
 
 		check_dependencies();
+
+		Device.init();
+
+		Device.test_all();
 
 		var console =  new GrootConsole();
 		bool is_success = console.parse_arguments(args);
@@ -70,6 +76,7 @@ public class GrootConsole : GLib.Object {
 	}
 
 	private static void set_locale() {
+		
 		Intl.setlocale(GLib.LocaleCategory.MESSAGES, "groot");
 		Intl.textdomain(GETTEXT_PACKAGE);
 		Intl.bind_textdomain_codeset(GETTEXT_PACKAGE, "utf-8");

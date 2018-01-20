@@ -162,7 +162,7 @@ public class MountEntryManager : GLib.Object {
 
 			if (!entry.device.up().contains("UUID=") && !entry.device.down().has_prefix("/dev/disk/")){
 
-				var dev = Device.find_device_in_list_by_name(devices, entry.device);
+				var dev = Device.find_device_in_list(devices, entry.device);
 				if ((dev != null) && (dev.uuid.length > 0)){
 					entry.device = "UUID=%s".printf(dev.uuid);
 				}
@@ -173,7 +173,7 @@ public class MountEntryManager : GLib.Object {
 
 			if (!entry.device.up().contains("UUID=") && !entry.device.down().has_prefix("/dev/disk/")){
 
-				var dev = Device.find_device_in_list_by_name(devices, entry.device);
+				var dev = Device.find_device_in_list(devices, entry.device);
 				if ((dev != null) && (dev.uuid.length > 0)){
 					entry.device = "UUID=%s".printf(dev.uuid);
 				}
