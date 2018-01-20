@@ -320,6 +320,45 @@ public class GrootConsole : GLib.Object {
 		basepath = "/tmp/%s".printf(timestamp_for_path());
 		dir_create(basepath);
 
+		foreach(var entry in mgr.crypttab){
+
+			var dev = Device.find_device_in_list(devices, entry.device);
+
+			if (dev == null){
+				if (!entry.options.contains("nofail")){
+					log_error("%s: %s".printf(_("Could not find device referenced in crypttab file"), entry.device));
+					return false;
+				}
+				else{
+					continue;
+				}
+			}
+
+			if (dev.is_encrypted_partition){
+
+				if (!dev.is_unlocked){
+
+					var cmd = "cryptsetup luksOpen '%s' '%s'".printf(dev.device, entry.name);
+					if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+					Posix.system(cmd);
+						
+					dev.query_changes();
+					if (!dev.is_unlocked) { return false; }
+				}
+				else{
+
+					if (dev.children[0].mapped_name != entry.name){
+						// create device alias
+						string cmd = "ln -s '%s' '/dev/mapper/%s'".printf(dev.device, entry.name);
+						if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
+						Posix.system(cmd);
+					}
+				}
+			}
+		}
+
+		devices = Device.get_block_devices();
+
 		foreach(var syspath in new string[] { "/", "/home", "/boot", "/boot/efi" }){
 
 			var entry = mgr.get_entry_by_path(syspath); // check if entry exists
@@ -642,7 +681,10 @@ public class GrootConsole : GLib.Object {
 
 		bool status = true;
 
-		Posix.system("lsblk --fs");
+		//Posix.system("lsblk --fs");
+
+		//var devices = Device.get_block_devices();
+		Device.print_device_list();
 
 		return status;
 	}

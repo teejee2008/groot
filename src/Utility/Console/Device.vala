@@ -227,10 +227,9 @@ public class Device : GLib.Object{
 
 	public bool is_unlocked {
 		get {
-			return (mapped_name.length > 0);
+			return has_children;
 		}
 	}
-
 
 	public bool is_on_encrypted_partition {
 		get {
