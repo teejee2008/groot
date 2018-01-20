@@ -265,6 +265,10 @@ public class GrootConsole : GLib.Object {
 	private bool chroot(){
 
 		check_admin_access();
+
+		if (verbose || LOG_DEBUG){
+			log_msg("\n%s=%s".printf(_("basepath"), basepath));
+		}
 		
 		bool status = true;
 
@@ -304,6 +308,7 @@ public class GrootConsole : GLib.Object {
 	private bool mount_system_devices(){
 
 		string fstab = path_combine(basepath, "/etc/fstab");
+		
 		if (!file_exists(fstab)){
 			log_error("%s: %s".printf(_("File Not Found"), fstab));
 			log_error("%s".printf(_("Failed to mount system using fstab file")));
@@ -319,6 +324,17 @@ public class GrootConsole : GLib.Object {
 		basepath_bkup = basepath;
 		basepath = "/tmp/%s".printf(timestamp_for_path());
 		dir_create(basepath);
+
+		if (verbose || LOG_DEBUG){
+			log_msg("\n%s=%s".printf(_("basepath"), basepath));
+		}
+
+		if (verbose || LOG_DEBUG){
+			log_msg("");
+			log_msg(string.nfill(70,'-'));
+			log_msg(_("Mounting devices from fstab and crypttab"));
+			log_msg(string.nfill(70,'-'));
+		}
 
 		foreach(var entry in mgr.crypttab){
 
@@ -359,31 +375,37 @@ public class GrootConsole : GLib.Object {
 
 		devices = Device.get_block_devices();
 
-		foreach(var syspath in new string[] { "/", "/home", "/boot", "/boot/efi" }){
+		foreach(var entry in mgr.fstab){
 
-			var entry = mgr.get_entry_by_path(syspath); // check if entry exists
+			if (!entry.device.down().has_prefix("/") && !entry.device.down().has_prefix("uuid=")){ continue; }
+			
+			if (!entry.mount_point.has_prefix("/")){ continue; }
 
-			if (entry != null){
+			var dev = Device.find_device_in_list(devices, entry.device);
 
-				var dev = entry.get_device(devices);
-
-				var mpath = path_combine(basepath, syspath);
-				
-				if (dev != null){
-
-					string cmd = "mount";
-					cmd += " -t %s".printf(entry.fs_type);
-					cmd += " -o %s".printf(entry.options);
-					cmd += " %s".printf(dev.device);
-					cmd += " '%s'".printf(escape_single_quote(mpath));
-
-					if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
-
-					Posix.system(cmd);
+			if (dev == null){
+				if (!entry.options.contains("nofail")){
+					log_error("%s: %s".printf(_("Could not find device referenced in fstab file"), entry.device));
+					return false;
+				}
+				else{
+					continue;
 				}
 			}
-		}
 
+			var mpath = path_combine(basepath, entry.mount_point);
+			
+			string cmd = "mount";
+			cmd += " -t %s".printf(entry.fs_type);
+			cmd += " -o %s".printf(entry.options);
+			cmd += " %s".printf(dev.device);
+			cmd += " '%s'".printf(escape_single_quote(mpath));
+
+			if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
+
+			Posix.system(cmd);
+		}
+		
 		string cmd = "cd '%s'".printf(escape_single_quote(basepath));
 		log_msg("\n$ " + cmd);
 		Posix.system(cmd);
@@ -394,27 +416,52 @@ public class GrootConsole : GLib.Object {
 	private bool unmount_system_devices(){
 
 		if (basepath.length == 0){ return false; }
-
+		
 		var mgr = new MountEntryManager(false, basepath);
 		mgr.read_mount_entries();
+
+		var devices = Device.get_block_devices();
 		
-		foreach(var syspath in new string[] { "/boot/efi", "/boot", "/home", "/" }){
+		var list = mgr.fstab;
+		list.sort((a,b)=>{ return strcmp(a.mount_point,b.mount_point) * -1; });
 
-			var entry = mgr.get_entry_by_path(syspath); // check if entry exists
-
-			if (entry != null){
-				
-				var mpath = path_combine(basepath, syspath);
-				
-				string cmd = "umount";
-				cmd += " '%s'".printf(escape_single_quote(mpath));
-				
-				if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
-				
-				Posix.system(cmd);
-			}
+		if (verbose || LOG_DEBUG){
+			log_msg("");
+			log_msg(string.nfill(70,'-'));
+			log_msg(_("Unmounting devices from fstab and crypttab"));
+			log_msg(string.nfill(70,'-'));
 		}
 
+		// unmount in reverse order -----------------
+		
+		foreach(var entry in list){
+
+			if (!entry.device.down().has_prefix("/") && !entry.device.down().has_prefix("uuid=")){ continue; }
+			
+			if (!entry.mount_point.has_prefix("/")){ continue; }
+
+			var dev = Device.find_device_in_list(devices, entry.device);
+
+			if (dev == null){
+				if (!entry.options.contains("nofail")){
+					log_error("%s: %s".printf(_("Could not find device referenced in fstab file"), entry.device));
+					return false;
+				}
+				else{
+					continue;
+				}
+			}
+
+			var mpath = path_combine(basepath, entry.mount_point);
+			
+			string cmd = "umount --lazy --force";
+			cmd += " '%s'".printf(escape_single_quote(mpath));
+
+			if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
+
+			Posix.system(cmd);
+		}
+		
 		file_delete(basepath); // delete if empty
 
 		basepath = basepath_bkup;
@@ -440,6 +487,13 @@ public class GrootConsole : GLib.Object {
 		}
 
 		if (share_display){
+
+			if (verbose || LOG_DEBUG){
+				log_msg("");
+				log_msg(string.nfill(70,'-'));
+				log_msg(_("Enable display sharing"));
+				log_msg(string.nfill(70,'-'));
+			}
 			
 			string cmd = "xhost +local:";
 
@@ -473,10 +527,6 @@ public class GrootConsole : GLib.Object {
 	
 	private void check_dirs(){
 	
-		if (verbose || LOG_DEBUG){
-			log_msg("\n%s=%s".printf(_("basepath"), basepath));
-		}
-
 		foreach(string name in new string[]{ "dev", "proc", "run", "sys" }){
 			
 			string path = path_combine(basepath, name);
@@ -492,6 +542,13 @@ public class GrootConsole : GLib.Object {
 
 	private void mount_dirs(){
 
+		if (verbose || LOG_DEBUG){
+			log_msg("");
+			log_msg(string.nfill(70,'-'));
+			log_msg(_("Mounting system devices"));
+			log_msg(string.nfill(70,'-'));
+		}
+		
 		string cmd = "";
 
 		cmd = "mount proc   '%s/proc'    -t proc     -o nosuid,noexec,nodev".printf(escape_single_quote(basepath));
@@ -525,6 +582,13 @@ public class GrootConsole : GLib.Object {
 
 	private void unmount_dirs(){
 
+		if (verbose || LOG_DEBUG){
+			log_msg("");
+			log_msg(string.nfill(70,'-'));
+			log_msg(_("Unmounting system devices"));
+			log_msg(string.nfill(70,'-'));
+		}
+		
 		string cmd = "";
 		
 		cmd = "umount --lazy --force --recursive '%s/dev'".printf(escape_single_quote(basepath));
@@ -551,6 +615,13 @@ public class GrootConsole : GLib.Object {
 	private string copy_resolv_conf(){
 
 		if (!share_internet){ return ""; }
+
+		if (verbose || LOG_DEBUG){
+			log_msg("");
+			log_msg(string.nfill(70,'-'));
+			log_msg(_("Copy resolv.conf"));
+			log_msg(string.nfill(70,'-'));
+		}
 
 		string ts = timestamp_for_path();
 
@@ -596,6 +667,13 @@ public class GrootConsole : GLib.Object {
 	private void restore_resolv_conf(){
 
 		if (!share_internet){ return; }
+
+		if (verbose || LOG_DEBUG){
+			log_msg("");
+			log_msg(string.nfill(70,'-'));
+			log_msg(_("Restore resolv.conf"));
+			log_msg(string.nfill(70,'-'));
+		}
 
 		string conf = "/etc/resolv.conf";
 		string conf_chroot = path_combine(basepath, conf);
