@@ -32,7 +32,7 @@ using TeeJee.Misc;
 
 public const string AppName = "Groot";
 public const string AppShortName = "groot";
-public const string AppVersion = "17.12";
+public const string AppVersion = "18.1";
 public const string AppAuthor = "Tony George";
 public const string AppAuthorEmail = "teejeetech@gmail.com";
 

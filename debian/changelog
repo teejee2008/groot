@@ -1,3 +1,16 @@
+groot (18.1) xenial; urgency=medium
+
+  * Added command: --chroot-fstab
+
+  * Added option: --verbose
+
+  * Set environment variables for chroot session from guest system
+
+  * Use XZ compression for installers
+
+ -- Tony George <tony.george.kol@gmail.com>  Sat, 20 Jan 2018 10:00:00 +0530
+
+
 groot (17.12) xenial; urgency=medium
 
   * Initial release
