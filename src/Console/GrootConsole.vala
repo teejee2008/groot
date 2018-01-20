@@ -137,7 +137,7 @@ public class GrootConsole : GLib.Object {
 
 		msg += "%s:\n".printf(_("Commands"));
 		msg += fmt.printf("--chroot", _("Change root to basepath (default if no command specified)"));
-		msg += fmt.printf("--chroot-fstab", _("Read fstab file from basepath, mount devices under /tmp, and change root"));
+		msg += fmt.printf("--chroot-fstab", _("Change root after mounting devices from fstab and cryptab"));
 		msg += fmt.printf("--list-devices", _("List current devices"));
 		msg += fmt.printf("--sysinfo", _("Show current system information"));
 		msg += "\n";
@@ -365,7 +365,7 @@ public class GrootConsole : GLib.Object {
 
 					if (dev.children[0].mapped_name != entry.name){
 						// create device alias
-						string cmd = "ln -s '%s' '/dev/mapper/%s'".printf(dev.device, entry.name);
+						string cmd = "ln -s '%s' '/dev/mapper/%s'".printf(dev.children[0].device, entry.name);
 						if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd); }
 						Posix.system(cmd);
 					}
@@ -394,6 +394,11 @@ public class GrootConsole : GLib.Object {
 			}
 
 			var mpath = path_combine(basepath, entry.mount_point);
+
+			if (!file_exists(mpath)){
+				log_error("%s: %s".printf(_("Path not found"), mpath));
+				return false;
+			}
 			
 			string cmd = "mount";
 			cmd += " -t %s".printf(entry.fs_type);
@@ -715,7 +720,7 @@ public class GrootConsole : GLib.Object {
 
 		show_session_message();
 
-		string cmd = "SHELL=/bin/bash unshare --fork --pid chroot '%s'".printf(escape_single_quote(basepath));
+		string cmd = "SHELL=/bin/bash unshare --fork --pid chroot '%s' /usr/bin/env -i HOME=/root USER=root /bin/bash -l".printf(escape_single_quote(basepath));
 		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
 		Posix.system(cmd); // --pid
 	}
