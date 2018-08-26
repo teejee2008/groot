@@ -48,7 +48,8 @@ public class GrootConsole : GLib.Object {
 	public bool verbose = false;
 	public bool mount_fstab = false;
 	public bool fix_boot = false;
-
+	public bool install_updates = false;
+	
 	public bool share_internet = true;
 	public bool share_display = true;
 
@@ -192,6 +193,14 @@ public class GrootConsole : GLib.Object {
 				fix_boot = true;
 				break;
 
+			case "-u":
+			case "--update":
+			case "--install-updates":
+				command = "chroot";
+				mount_fstab = true;
+				install_updates = true;
+				break;
+
 			case "-d":
 			case "--list-devices":
 				command = "list-devices";
@@ -307,6 +316,9 @@ public class GrootConsole : GLib.Object {
 
 		if (fix_boot){
 			fix_grub();
+		}
+		else if (install_updates){
+			install_package_updates();
 		}
 		else {
 			start_session();
@@ -802,6 +814,8 @@ public class GrootConsole : GLib.Object {
 		
 		var dist = new LinuxDistro.from_path(basepath);
 
+		log_msg(string.nfill(70,'-'));
+		
 		dist.print_system_info();
 
 		sh += "echo '%s'\n".printf(string.nfill(70,'-'));
@@ -882,6 +896,71 @@ public class GrootConsole : GLib.Object {
 		sh += cmd;
 		//sh += "echo '%s'\n".printf(string.nfill(70,'-'));
 		
+		file_write(sh_file, sh);
+
+		chmod(sh_file, "u+x");
+
+		return file_exists(sh_file);
+	}
+
+	private bool install_package_updates(){
+
+		bool ok = write_update_script();
+
+		if (!ok){ return false; }
+
+		string cmd = "SHELL=/bin/bash unshare --fork --pid chroot '%s' /usr/bin/env -i HOME=/root USER=root /bin/bash -c '/tmp/install-updates'".printf(escape_single_quote(basepath));
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
+		Posix.system(cmd); // --pid
+
+		return true;
+	}
+
+	private bool write_update_script(){
+
+		string sh_file = path_combine(basepath, "tmp/install-updates");
+
+		file_delete(sh_file);
+		
+		string sh = "#!/bin/bash\n";
+		string cmd = "";
+		
+		var dist = new LinuxDistro.from_path(basepath);
+
+		log_msg(string.nfill(70,'-'));
+		
+		dist.print_system_info();
+
+		sh += "echo '%s'\n".printf(string.nfill(70,'-'));
+		
+		cmd = "";
+		
+		switch (dist.dist_type){
+		case "debian":
+			
+			cmd  = "%s update \n".printf(dist.package_manager);
+			cmd += "%s upgrade \n".printf(dist.package_manager);
+			break;
+			
+		case "fedora":
+
+			cmd  = "%s check-update \n".printf(dist.package_manager);
+			cmd += "%s upgrade \n".printf(dist.package_manager);
+			break;
+			
+		case "arch":
+
+			cmd = "%s -Syyu \n".printf(dist.package_manager);
+			break;
+			
+		default:
+			break;
+		}
+
+		sh += "echo '%s'\n".printf(escape_single_quote(cmd));
+		sh += cmd;
+		//sh += "echo '%s'\n".printf(string.nfill(70,'-'));
+
 		file_write(sh_file, sh);
 
 		chmod(sh_file, "u+x");
