@@ -1,3 +1,14 @@
+groot (18.8) xenial; urgency=medium
+
+  * Added command --fixboot for fixing boot issues
+
+  * Added command --update for installing package updates
+
+  * Added command --guestinfo for showing guest system info
+  
+ -- Tony George <tony.george.kol@gmail.com>  Sun, 26 Aug 2018 10:00:00 +0530
+
+
 groot (18.1) xenial; urgency=medium
 
   * Added command: --chroot-fstab
