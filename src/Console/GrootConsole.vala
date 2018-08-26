@@ -145,19 +145,20 @@ public class GrootConsole : GLib.Object {
 		msg += _("Usage") + ": groot [command] [basepath] [options]\n\n";
 
 		msg += "%s:\n".printf(_("Commands"));
-		msg += fmt.printf("--chroot", _("Change root to basepath (default if no command specified)"));
-		msg += fmt.printf("--list-devices", _("List current devices"));
-		msg += fmt.printf("--fixboot", _("Update initramfs and grub menu in chrooted system"));
-		msg += fmt.printf("--sysinfo", _("Show host system information"));
-		msg += fmt.printf("--sysinfo-guest", _("Show guest system information"));
+		msg += fmt.printf("    --chroot", _("Chroot to [basepath] and open shell session (default)"));
+		msg += fmt.printf("-f, --fixboot", _("Chroot to [basepath] and fix boot issues"));
+		msg += fmt.printf("", _("(Rebuilds initramfs and updates GRUB menu)"));
+		msg += fmt.printf("-s, --sysinfo", _("Show host system information"));
+		msg += fmt.printf("-i, --guestinfo", _("Show guest system information"));
+		msg += fmt.printf("-d, --list-devices", _("List current devices"));
 		msg += "\n";
 		
 		msg += "%s:\n".printf(_("Options"));
-		msg += fmt.printf("--fstab", _("Mount devices from fstab and cryptab"));
-		msg += fmt.printf("--no-display", _("Do not share display (default: sharing enabled)"));
-		msg += fmt.printf("--no-internet", _("Do not share internet connection (default: sharing enabled)"));
-		msg += fmt.printf("--verbose, -v", _("Show executed commands"));
-		msg += fmt.printf("--debug", _("Show debug messages"));
+		msg += fmt.printf("-m, --fstab", _("Mount devices from fstab and cryptab"));
+		msg += fmt.printf("    --no-display", _("Do not share display (default: enabled)"));
+		msg += fmt.printf("    --no-internet", _("Do not share internet connection (default: enabled)"));
+		msg += fmt.printf("-v, --verbose", _("Show commands and extra messages"));
+		msg += fmt.printf("    --debug", _("Show debug messages"));
 		msg += "\n";
 
 		return msg;
@@ -177,27 +178,35 @@ public class GrootConsole : GLib.Object {
 				command = "chroot";
 				break;
 
-			case "--chroot-fstab": // deprecated alias
+			case "-m":
 			case "--fstab":
+			case "--chroot-fstab": // deprecated alias
 				command = "chroot";
 				mount_fstab = true;
 				break;
 
+			case "-f":
 			case "--fixboot":
 				command = "chroot";
 				mount_fstab = true;
 				fix_boot = true;
 				break;
 
+			case "-d":
 			case "--list-devices":
 				command = "list-devices";
 				break;
 
+			case "-s":
 			case "--sysinfo":
+			case "--sys-info":
+			case "--host-info":
 				command = "sysinfo";
 				break;
 
-			case "--sysinfo-guest":
+			case "-i":
+			case "--guestinfo":
+			case "--guest-info":
 				command = "sysinfo-guest";
 				break;
 				
@@ -223,9 +232,8 @@ public class GrootConsole : GLib.Object {
 				share_internet = false;
 				break;
 
-			case "--help":
-			case "--h":
 			case "-h":
+			case "--help":
 				log_msg(help_message());
 				return true;
 
