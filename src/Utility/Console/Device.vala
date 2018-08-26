@@ -2,7 +2,7 @@
 /*
  * Device.vala
  *
- * Copyright 2017 Tony George <teejeetech@gmail.com>
+ * Copyright 2012-18 Tony George <teejeetech@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -27,8 +27,9 @@
 using TeeJee.Logging;
 using TeeJee.FileSystem;
 using TeeJee.ProcessHelper;
+using TeeJee.Misc;
 
-public class Device : GLib.Object{
+public class Device : GLib.Object, Gee.Comparable<Device>{
 
 	/* Class for storing disk information */
 
@@ -116,7 +117,6 @@ public class Device : GLib.Object{
 	}
 
 	public static Gee.ArrayList<Device> get_devices(){
-
 		if (device_list == null){
 			get_block_devices();
 		}
@@ -124,9 +124,57 @@ public class Device : GLib.Object{
 		return device_list;
 	}
 
+	public int compare_to(Device b){
+
+		var a = this;
+
+		// list loop devices after other types ----------------------
+		
+		if (a.kname.has_prefix("loop") && !b.kname.has_prefix("loop")){
+			return 1;
+		}
+		else if (!a.kname.has_prefix("loop") && b.kname.has_prefix("loop")){
+			return -1;
+		}
+		else {
+
+			// list internal disks before removable disks ----------
+			
+			if (a.removable && !b.removable){
+				return 1;
+			}
+			else if (!a.removable && b.removable){
+				return -1;
+			}
+			else {
+
+				// use numeric sorting for numbered partitions --------------
+		
+				var match_a = regex_match("""^(.*)([0-9]+)$""", a.kname);
+					
+				var match_b = regex_match("""^(.*)([0-9]+)$""", b.kname);
+
+				if ((match_a != null) && (match_b != null)){
+					
+					if (match_a.fetch(1) == match_b.fetch(1)){
+
+						return int.parse(match_a.fetch(2)) - int.parse(match_b.fetch(2));
+					}
+					else{
+						return strcmp(a.kname, b.kname);
+					}
+				}
+				else{
+					return strcmp(a.kname, b.kname);
+				}
+			}
+		}
+	}
+
 	// instance ------------------
 	
 	public Device(){
+		
 		mount_points = new Gee.ArrayList<MountEntry>();
 		symlinks = new Gee.ArrayList<string>();
 		children = new Gee.ArrayList<Device>();
@@ -162,11 +210,12 @@ public class Device : GLib.Object{
 		owned get{
 			string mpath = "";
 			foreach(var mp in mount_points){
-				if (mpath.length == 0){
+				if ((mp.subvolume_name() == "/") || (mp.subvolume_name() == "")){
 					mpath = mp.mount_point;
+					break;
 				}
-				else if (mp.subvolume_name() == "/"){
-					mpath = mp.mount_point; // use this instead of first one
+				else{
+					mpath = mp.mount_point;
 				}
 			}
 			return mpath;
@@ -221,7 +270,7 @@ public class Device : GLib.Object{
 
 	public bool is_encrypted_partition {
 		get {
-			return (type == "part") && fstype.down().contains("luks");
+			return fstype.down().contains("luks");
 		}
 	}
 
@@ -241,6 +290,13 @@ public class Device : GLib.Object{
 		return (type == "part") && fstype.down().contains("lvm2_member");
 	}
 
+	public bool is_top_level {
+		get {
+			//return ((type == "disk") || (type == "loop")) && (parent == null);
+			return (pkname.length == 0);
+		}
+	}
+	
 	public bool has_children {
 		get{
 			return (children.size > 0);
@@ -258,31 +314,52 @@ public class Device : GLib.Object{
 		return null;
 	}
 
+	public bool has_mounted_partitions {
+		get {
+			if (is_mounted){
+				return true;
+			}
+			
+			foreach(var child in children){
+				if (child.has_mounted_partitions){
+					return true;
+				}
+			}
+
+			return false;
+		}
+	}
+
 	public bool has_parent(){
 		return (parent != null);
 	}
 
 	public bool is_system_device {
 		get {
-			bool is_system = false;
-
 			foreach (var mnt in mount_points){
 				switch (mnt.mount_point){
 				case "/":
 				case "/boot":
 				case "/boot/efi":
 				case "/home":
-					is_system = true;
-					break;
+				case "/var":
+				case "/usr":
+					return true;
 				default:
 					if (fstype == "swap"){
-						is_system = true;
+						return true;
 					}
 					break;
 				}
 			}
 
-			return is_system;
+			foreach(var child in children){
+				if (child.is_system_device){
+					return true;
+				}
+			}
+
+			return false;
 		}
 	}
 
@@ -441,13 +518,17 @@ public class Device : GLib.Object{
 	}
 
 	private static void find_child_devices(Gee.ArrayList<Device> list, Device parent){
+		
 		if (lsblk_is_ancient && (parent.type == "disk")){
+			
 			foreach (var part in list){
+				
 				if ((part.kname != parent.kname) && part.kname.has_prefix(parent.kname)){
+					
 					parent.children.add(part);
 					part.parent = parent;
 					part.pkname = parent.kname;
-					//log_debug("%s -> %s".printf(parent.kname, part.kname));
+					log_debug("%s -> %s".printf(parent.kname, part.kname));
 				}
 			}
 		}
@@ -459,6 +540,14 @@ public class Device : GLib.Object{
 				}
 			}
 		}
+
+		if (parent.removable){
+			foreach(var child in parent.children){
+				child.removable = true;
+			}
+		}
+
+		parent.children.sort();
 	}
 
 	private static void find_toplevel_parent(Gee.ArrayList<Device> list, Device dev){
@@ -538,6 +627,29 @@ public class Device : GLib.Object{
 		}
 	}
 
+	public static void eject_removable_disk(Device dev){
+
+		//http://www.redhatgeek.com/linux/remove-a-disk-from-redhatcentos-linux-without-rebooting-the-system
+
+		
+		string sh = "";
+
+		string kname = dev.device.replace("/dev/","").strip();
+
+		// mark offline
+		string sysfile = "/sys/block/%s/device/state".printf(kname);
+		sh += "echo 'offline' > %s \n".printf(sysfile);
+		
+		// delete entries from system
+		sysfile = "/sys/block/%s/device/delete".printf(kname);
+		sh += "echo '1' > %s \n".printf(sysfile);
+
+		string std_out, std_err;
+		exec_script_sync(sh, out std_out, out std_err, false, true);
+		
+		log_msg("ejected: %s".printf(dev.device));
+	}
+
 	public static Gee.ArrayList<Device> get_block_devices_using_lsblk(string dev_name = ""){
 
 		//log_debug("Device: get_block_devices_using_lsblk()");
@@ -581,7 +693,7 @@ public class Device : GLib.Object{
 		Example: Loop devices created by mounting the same ISO multiple times.
 		*/
 
-		// parse output and add to list -------------
+		// parse output and add to list --------------------------------------------
 
 		int index = -1;
 
@@ -679,12 +791,7 @@ public class Device : GLib.Object{
 			}
 		}
 
-		// already sorted
-		/*list.sort((a,b)=>{
-			return (a.order - b.order);
-		});*/
-
-		// add aliases from /dev/mapper/
+		// add aliases from /dev/mapper/ -------------------------------
 
 		try{
 			var f_mapper = File.new_for_path ("/dev/mapper");
@@ -705,11 +812,6 @@ public class Device : GLib.Object{
 				
 				string target_device = target.replace("..","/dev");
 
-				//log_debug("info.get_name(): %s".printf(info.get_name()));
-				//log_debug("info.get_symlink_target(): %s".printf(info.get_symlink_target()));
-				//log_debug("mapped_file: %s".printf(mapped_file));
-				//log_debug("mapped_device: %s".printf(mapped_device));
-
 				foreach(var dev in list){
 					if (dev.device == target_device){
 						dev.mapped_name = info.get_name();
@@ -725,7 +827,7 @@ public class Device : GLib.Object{
 			log_error (e.message);
 		}
 
-		// update relationships -----------------------------
+		// update relationships ----------------------------------------
 
 		foreach (var part in list){
 			find_child_devices(list, part);
@@ -760,7 +862,7 @@ public class Device : GLib.Object{
 		if (dev_name_or_mount_point.length > 0){
 			cmd += " '%s'".printf(escape_single_quote(dev_name_or_mount_point));
 		}
-		log_debug(cmd);
+		//log_debug(cmd);
 
 		string std_out, std_err;
 		exec_sync(cmd, out std_out, out std_err);
@@ -840,6 +942,8 @@ public class Device : GLib.Object{
 
 			//log_debug("resolved pi.device=%s".printf(pi.device));
 
+			// get uuid ---------------------------
+
 			pi.uuid = get_uuid_by_name(pi.device);
 
 			//log_debug("resolved pi.uuid=%s".printf(pi.uuid));
@@ -863,23 +967,27 @@ public class Device : GLib.Object{
 
 		var list = new Gee.ArrayList<Device>();
 
-		string mtab_path = "/etc/mtab";
-		string mtab_lines = "";
-
-		File f;
-
 		// find mtab file -----------
 
-		mtab_path = "/proc/mounts";
-		f = File.new_for_path(mtab_path);
-		if(!f.query_exists()){
+		string mtab_path = "/proc/mounts";
+		
+		File f = File.new_for_path(mtab_path);
+		
+		if (!f.query_exists()){
+			
 			mtab_path = "/proc/self/mounts";
+			
 			f = File.new_for_path(mtab_path);
-			if(!f.query_exists()){
+			
+			if (!f.query_exists()){
+				
 				mtab_path = "/etc/mtab";
+				
 				f = File.new_for_path(mtab_path);
-				if(!f.query_exists()){
-					return list; //empty list
+				
+				if (!f.query_exists()){
+					
+					return list;
 				}
 			}
 		}
@@ -892,7 +1000,7 @@ public class Device : GLib.Object{
 
 		//read -----------
 
-		mtab_lines = file_read(mtab_path);
+		var mtab_lines = file_read(mtab_path);
 
 		/*
 		sample mtab
@@ -939,7 +1047,7 @@ public class Device : GLib.Object{
 						pi.device = val.strip();
 						break;
 					case 2: //mountpoint
-						mp.mount_point = val.strip().replace("""\040"""," "); // replace space. TODO: other chars?
+						mp.mount_point = val.strip().replace("""\040"""," ").replace("""\046""","&"); // replace space. TODO: other chars?
 						if (!mount_list.contains(mp.mount_point)){
 							mount_list.add(mp.mount_point);
 							pi.mount_points.add(mp);
@@ -1128,9 +1236,13 @@ public class Device : GLib.Object{
 	}
 
 	public static bool mount_point_in_use(string mount_point){
+		
 		var list = Device.get_mounted_filesystems_using_mtab();
+		
 		foreach (var dev in list){
+			
 			foreach(var mp in dev.mount_points){
+				
 				if (mp.mount_point.has_prefix(mount_point)){
 					// check for any mount point at or under the given mount_point
 					return true;
@@ -1197,14 +1309,17 @@ public class Device : GLib.Object{
 		this.major = dev2.major;
 		this.minor = dev2.minor;
 	}
-
+	
+	public Device copy(){
+		var dev = new Device();
+		dev.copy_fields_from(this);
+		return dev;
+	}
+	
 	public Device? query_changes(){
 
-		var list = get_block_devices();
-		
-		foreach(var dev in list){
-			if (dev.uuid == uuid){
-				// update all fields
+		foreach (var dev in get_block_devices()){
+			if (dev.device == device){
 				copy_fields_from(dev);
 				break;
 			}
@@ -1231,11 +1346,10 @@ public class Device : GLib.Object{
 
 		var list = get_mounted_filesystems_using_mtab();
 		
-		var dev2 = find_device_in_list(list, uuid);
+		var dev = find_device_in_list(list, device);
 		
-		if (dev2 != null){
-			// update fields
-			mount_points = dev2.mount_points;
+		if (dev != null){
+			mount_points = dev.mount_points; // update field
 		}
 	}
 

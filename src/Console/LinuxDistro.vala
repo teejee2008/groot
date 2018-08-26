@@ -31,9 +31,8 @@ public class LinuxDistro : GLib.Object{
 	/* Class for getting information about Linux distribution */
 
 	public string dist_id = ""; // Ubuntu
-	public string dist_type = ""; // debian
-	public string dist_type_name = ""; // Debian / Ubuntu
-	
+	public string dist_type = ""; // debian, fedora, arch
+
 	public string description = ""; // Ubuntu 16.04
 	public string release = ""; // 16.04
 	public string codename = ""; // xenial
@@ -56,6 +55,10 @@ public class LinuxDistro : GLib.Object{
 		
 		check_dist_type();
 
+		check_package_manager();
+
+		check_package_arch();
+
 		check_system();
 	}
 
@@ -64,8 +67,14 @@ public class LinuxDistro : GLib.Object{
 		basepath = root_path;
 
 		read_dist_release_file();
-		
-		//check_dist_type(); // Not implemented
+
+		check_dist_type();
+
+		check_package_manager();
+
+		//check_package_arch(); // NOT_IMPLEMENTED
+
+		//check_system(); // NOT_IMPLEMENTED
 	}
 
 	private void read_dist_release_file(){
@@ -171,58 +180,88 @@ public class LinuxDistro : GLib.Object{
 	}
 
 	private void check_dist_type(){
-		
-		if (cmd_exists("dpkg")){
 			
+		if (dist_id == "manjaro"){
+			dist_type = "arch";
+		}
+		else if ((dist_id == "debian")||(dist_id == "ubuntu")){
 			dist_type = "debian";
+		}
+		else if ((dist_id == "fedora")){
+			dist_type = "fedora";
+		}
+	}
 
-			if (cmd_exists("aptitude")){
+	private void check_package_manager(){
+
+		if (cmd_exists_in_basepath("dpkg")){
+
+			if (dist_type.length == 0){
+				dist_type = "debian";
+			}
+
+			if (cmd_exists_in_basepath("aptitude")){
 				package_manager = "aptitude";
 			}
-			else if (cmd_exists("apt")){
+			else if (cmd_exists_in_basepath("apt")){
 				package_manager = "apt";
 			}
-			else if (cmd_exists("apt-fast")){
+			else if (cmd_exists_in_basepath("apt-fast")){
 				package_manager = "apt-fast";
 			}
 			else {
 				package_manager = "apt-get";
 			}
 		}
-		else if (cmd_exists("dnf")){
-			dist_type = "fedora";
+		else if (cmd_exists_in_basepath("dnf")){
+
+			if (dist_type.length == 0){
+				dist_type = "fedora";
+			}
+			
 			package_manager = "dnf";
 		}
-		else if (cmd_exists("yum")){
-			dist_type = "fedora";
+		else if (cmd_exists_in_basepath("yum")){
+
+			if (dist_type.length == 0){
+				dist_type = "fedora";
+			}
+			
 			package_manager = "yum";
 		}
-		else if (cmd_exists("pacman")){
-			dist_type = "arch";
+		else if (cmd_exists_in_basepath("pacman")){
+
+			if (dist_type.length == 0){
+				dist_type = "arch";
+			}
+			
 			package_manager = "pacman";
 		}
 		else{
 			log_error(Messages.UNKNOWN_DISTRO);
-			dist_type = "unknown";
-			package_manager = "unknown";
+			dist_type = "";
+			package_manager = "";
 		}
+	}
 
-		switch(dist_type){
-		case "debian":
-			dist_type_name = "Debian / Ubuntu";
-			break;
-		case "fedora":
-			dist_type_name = "Fedora / RedHat / Cent OS";
-			break;
-		case "arch":
-			dist_type_name = "Arch";
-			break;
-		default:
-			dist_type_name = "Unknown";
-			break;
+	private bool cmd_exists_in_basepath(string cmd){
+		
+		return cmd_exists_in_path(basepath, cmd);
+	}
+
+	public string dist_type_name {
+		owned get {
+			switch(dist_type){
+			case "debian":
+				return "Debian / Ubuntu";
+			case "fedora":
+				return "Fedora / RedHat / Cent OS";
+			case "arch":
+				return "Arch";
+			default:
+				return "";
+			}
 		}
-
-		check_package_arch();
 	}
 
 	private void check_package_arch(){
@@ -270,12 +309,14 @@ public class LinuxDistro : GLib.Object{
 			log_msg("Distribution: %s".printf(dist_full_name));
 		}
 		
-		log_msg("Dist Type: %s".printf(dist_type_name));
-		log_msg("Package Manager: %s".printf(package_manager));
-		log_msg("Arch-Pkgs: %s".printf(package_arch));
-		log_msg("Arch-Kern: %s".printf(kernel_arch));
-		log_msg("Arch-Type: %d-bit".printf(machine_arch));
-		
+		log_msg("Dist Type: %s".printf((dist_type_name.length > 0) ? dist_type_name : "???"));
+		log_msg("Package Manager: %s".printf((package_manager.length > 0) ? package_manager : "???"));
+
+		if (basepath == "/"){
+			log_msg("Arch-Pkgs: %s".printf((package_arch.length > 0) ? package_arch : "???"));
+			log_msg("Arch-Kern: %s".printf((kernel_arch.length > 0) ? kernel_arch : "???"));
+			log_msg("Arch-Type: %s".printf((machine_arch > 0) ? machine_arch.to_string() + "-bit" : "???"));
+		}
 		//log_msg(string.nfill(70,'-'));
 	}
 }

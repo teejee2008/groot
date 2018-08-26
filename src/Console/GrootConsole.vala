@@ -46,6 +46,8 @@ public class GrootConsole : GLib.Object {
 	public string basepath = "";
 	public string basepath_bkup = "";
 	public bool verbose = false;
+	public bool mount_fstab = false;
+	public bool fix_boot = false;
 
 	public bool share_internet = true;
 	public bool share_display = true;
@@ -144,12 +146,14 @@ public class GrootConsole : GLib.Object {
 
 		msg += "%s:\n".printf(_("Commands"));
 		msg += fmt.printf("--chroot", _("Change root to basepath (default if no command specified)"));
-		msg += fmt.printf("--chroot-fstab", _("Change root after mounting devices from fstab and cryptab"));
 		msg += fmt.printf("--list-devices", _("List current devices"));
-		msg += fmt.printf("--sysinfo", _("Show current system information"));
+		msg += fmt.printf("--fixboot", _("Update initramfs and grub menu in chrooted system"));
+		msg += fmt.printf("--sysinfo", _("Show host system information"));
+		msg += fmt.printf("--sysinfo-guest", _("Show guest system information"));
 		msg += "\n";
 		
 		msg += "%s:\n".printf(_("Options"));
+		msg += fmt.printf("--fstab", _("Mount devices from fstab and cryptab"));
 		msg += fmt.printf("--no-display", _("Do not share display (default: sharing enabled)"));
 		msg += fmt.printf("--no-internet", _("Do not share internet connection (default: sharing enabled)"));
 		msg += fmt.printf("--verbose, -v", _("Show executed commands"));
@@ -173,12 +177,16 @@ public class GrootConsole : GLib.Object {
 				command = "chroot";
 				break;
 
-			case "--chroot-fstab":
-				command = "chroot-fstab";
+			case "--chroot-fstab": // deprecated alias
+			case "--fstab":
+				command = "chroot";
+				mount_fstab = true;
 				break;
 
-			case "--fix-boot":
-				command = "fix-boot";
+			case "--fixboot":
+				command = "chroot";
+				mount_fstab = true;
+				fix_boot = true;
 				break;
 
 			case "--list-devices":
@@ -187,6 +195,10 @@ public class GrootConsole : GLib.Object {
 
 			case "--sysinfo":
 				command = "sysinfo";
+				break;
+
+			case "--sysinfo-guest":
+				command = "sysinfo-guest";
 				break;
 				
 			case "--basepath":
@@ -251,14 +263,11 @@ public class GrootConsole : GLib.Object {
 		case "chroot":
 			return chroot();
 
-		case "chroot-fstab":
-			return chroot_fstab();
-
-		case "fix-boot":
-			return fix_boot();
-
 		case "sysinfo":
 			return sysinfo();
+
+		case "sysinfo-guest":
+			return sysinfo_guest();
 
 		case "list-devices":
 			return list_devices();
@@ -271,43 +280,37 @@ public class GrootConsole : GLib.Object {
 	
 	private bool chroot(){
 
+		check_dirs();
+
 		check_admin_access();
 
 		if (verbose || LOG_DEBUG){
 			log_msg("\n%s=%s".printf(_("basepath"), basepath));
 		}
 		
-		bool status = true;
-
-		prepare_for_chroot();
-
-		start_session();
-
-		// session has ended --------------------------------------
-		
-		cleanup_after_chroot();
-
-		return status;
-	}
-
-	private bool chroot_fstab(){
-
-		check_admin_access();
-		
 		bool status = true, ok;
 
-		ok = mount_system_devices();
-		if (!ok){ return false; }
-	
+		if (mount_fstab){
+			ok = mount_system_devices();
+			if (!ok){ return false; }
+		}
+
 		prepare_for_chroot();
 
-		start_session();
+		if (fix_boot){
+			fix_grub();
+		}
+		else {
+			start_session();
+		}
 
 		// session has ended --------------------------------------
 		
 		cleanup_after_chroot();
 
-		unmount_system_devices();
+		if (mount_fstab){
+			unmount_system_devices();
+		}
 
 		return status;
 	}
@@ -401,6 +404,10 @@ public class GrootConsole : GLib.Object {
 			}
 
 			var mpath = path_combine(basepath, entry.mount_point);
+
+			if (!file_exists(mpath)){
+				dir_create(mpath);
+			}
 
 			if (!file_exists(mpath)){
 				log_error("%s: %s".printf(_("Path not found"), mpath));
@@ -763,6 +770,117 @@ public class GrootConsole : GLib.Object {
 		Posix.system(cmd); // --pid
 	}
 
+	private bool fix_grub(){
+
+		bool ok = write_fixboot_script();
+
+		if (!ok){ return false; }
+
+		string cmd = "SHELL=/bin/bash unshare --fork --pid chroot '%s' /usr/bin/env -i HOME=/root USER=root /bin/bash -c '/tmp/fixboot'".printf(escape_single_quote(basepath));
+		if (verbose || LOG_DEBUG){ log_msg("\n$ " + cmd.replace(basepath, "$basepath")); }
+		Posix.system(cmd); // --pid
+
+		return true;
+	}
+
+	private bool write_fixboot_script(){
+
+		string sh_file = path_combine(basepath, "tmp/fixboot");
+
+		file_delete(sh_file);
+		
+		string sh = "#!/bin/bash\n";
+		string cmd = "";
+		
+		var dist = new LinuxDistro.from_path(basepath);
+
+		dist.print_system_info();
+
+		sh += "echo '%s'\n".printf(string.nfill(70,'-'));
+
+		// update initramfs -----------------------
+
+		cmd = "";
+		
+		switch (dist.dist_type){
+		case "debian":
+			
+			cmd = "update-initramfs -u -k all \n";
+			break;
+			
+		case "fedora":
+
+			cmd = "dracut -f -v \n";
+			break;
+			
+		case "arch":
+
+			cmd = "mkinitcpio -p /etc/mkinitcpio.d/*.preset \n";
+			break;
+			
+		default:
+			break;
+		}
+
+		sh += "echo '%s'\n".printf(escape_single_quote(cmd));
+		sh += cmd;
+		sh += "echo '%s'\n".printf(string.nfill(70,'-'));
+
+		// update grub menu -------------------------------------
+
+		cmd = "";
+		
+		switch (dist.dist_type){
+		case "debian":
+
+			cmd = "update-grub \n";
+			break;
+			
+		case "fedora":
+		case "arch":
+
+			string cmd_name = "";
+
+			if (cmd_exists_in_path(basepath, "grub-mkconfig")){
+				cmd_name = "grub-mkconfig";
+			}
+			else if (cmd_exists_in_path(basepath, "grub2-mkconfig")){
+				cmd_name = "grub2-mkconfig";
+			}
+			
+			string grub_conf_name = "/boot/grub/grub.cfg";
+			string grub_conf_path = path_combine(basepath, grub_conf_name);
+			
+			if (!file_exists(grub_conf_path)){
+				grub_conf_name = "/boot/grub2/grub.cfg";
+				grub_conf_path = path_combine(basepath, grub_conf_name);
+			}
+			
+			if (!file_exists(grub_conf_path)){
+				log_error(_("Failed to find GRUB config file. GRUB menu will not be updated."));
+			}
+			
+			if ((cmd_name.length > 0) && file_exists(grub_conf_path)){
+				cmd = "%s -o %s \n".printf(cmd_name, grub_conf_name);
+			}
+			
+			break;
+			
+		default:
+			break;
+		}
+
+		sh += "echo '%s'\n".printf(escape_single_quote(cmd));
+		sh += cmd;
+		//sh += "echo '%s'\n".printf(string.nfill(70,'-'));
+		
+		file_write(sh_file, sh);
+
+		chmod(sh_file, "u+x");
+
+		return file_exists(sh_file);
+	}
+
 	private void show_session_message(){
 
 		log_msg("");
@@ -818,26 +936,14 @@ public class GrootConsole : GLib.Object {
 
 		return status;
 	}
-	
-	// fix boot -----------------------------------------------------
 
-	private bool fix_boot(){
+	private bool sysinfo_guest(){
 
 		bool status = true;
 
-		prepare_for_chroot();
-
-		mount_system_devices();
-		
-		//start_session();
-
-		// session has ended -------------
-		
-		cleanup_after_chroot();
-
-		unmount_system_devices();
+		var dist = new LinuxDistro.from_path(basepath);
+		dist.print_system_info();
 
 		return status;
 	}
-
 }

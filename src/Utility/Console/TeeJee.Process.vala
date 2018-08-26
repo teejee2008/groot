@@ -294,4 +294,17 @@ namespace TeeJee.ProcessHelper{
 			return true;
 		}
 	}
+
+	private bool cmd_exists_in_path(string basepath, string cmd){
+
+		string path = path_combine(basepath, "/bin/%s".printf(cmd));
+		
+		if (file_exists(path)){ return true; }
+		
+		path = path_combine(basepath, "/usr/bin/%s".printf(cmd));
+		
+		if (file_exists(path)){ return true; }
+		
+		return false;
+	}
 }
