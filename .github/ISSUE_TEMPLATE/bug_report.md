@@ -11,7 +11,7 @@ A clear and concise description of what the bug is.
 Steps to reproduce the behavior:
 1. Go to '...'
 2. Click on '....'
-3. See error
+3. Error message
 
 **Expected behavior**
 A clear and concise description of what you expected to happen.
@@ -19,14 +19,11 @@ A clear and concise description of what you expected to happen.
 **Screenshots**
 If applicable, add screenshots to help explain your problem.
 
-**Desktop (please complete the following information):**
- - OS: [e.g. iOS]
- - Browser [e.g. chrome, safari]
- - Version [e.g. 22]
+**System:**
+ - Linux Distribution Name and Version: [e.g. Ubuntu 16.04]
+ - Desktop [e.g. MATE, XFCE]
+ - Application Version [e.g. v18.8]
 
-**Additional context**
-Add any other context about the problem here.
-
-***Consider making a donation to support this project***
+***This is a free application created in my spare time. Consider making a donation if you need support for an issue.***
 
 [![](https://www.paypalobjects.com/en_US/i/btn/btn_donate_LG.gif)](https://www.paypal.com/cgi-bin/webscr?business=teejeetech@gmail.com&cmd=_xclick&currency_code=USD&item_name=Groot%20Donation)
